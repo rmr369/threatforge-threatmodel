@@ -1,110 +1,81 @@
-# ThreatForge ThreatModel License
+<div align="center">
 
-## Mozilla Public License 2.0
+# ThreatForge ThreatModel
 
-**ThreatForge ThreatModel** is licensed under the **Mozilla Public License, Version 2.0 (MPL-2.0)**.
+### Open-Source Threat Modeling & Security Architecture Platform
 
-Official license:
+**Mozilla Public License 2.0 (MPL-2.0)**
 
-https://www.mozilla.org/en-US/MPL/2.0/
+[Official MPL-2.0 License](https://www.mozilla.org/en-US/MPL/2.0/)
 
-The complete legal terms of the Mozilla Public License 2.0 apply to this project.
+</div>
 
 ---
 
-## What You Can Do
+## License
 
-Subject to the MPL-2.0, you may:
+<div align="center">
+
+**ThreatForge ThreatModel is licensed under the Mozilla Public License, Version 2.0.**
+
+**SPDX-License-Identifier: MPL-2.0**
+
+</div>
+
+The complete legal terms of the Mozilla Public License 2.0 apply to ThreatForge ThreatModel.
+
+The official MPL-2.0 license text is available at:
+
+> https://www.mozilla.org/en-US/MPL/2.0/
+
+The complete official license text is maintained in the [`LICENSE`](./LICENSE) file in this repository.
+
+---
+
+## 1. What You Can Do
+
+Subject to the terms and conditions of the MPL-2.0, you may:
 
 - Use ThreatForge ThreatModel for personal purposes.
+- Use ThreatForge ThreatModel for educational purposes.
+- Use ThreatForge ThreatModel for research.
+- Use ThreatForge ThreatModel for security engineering.
+- Use ThreatForge ThreatModel for threat modeling.
+- Use ThreatForge ThreatModel for DevSecOps.
 - Use ThreatForge ThreatModel for commercial purposes.
-- Copy and redistribute ThreatForge ThreatModel.
+- Copy and redistribute the software.
 - Modify the source code.
 - Create derivative works.
-- Integrate ThreatForge ThreatModel into larger software products.
+- Create internal enterprise versions.
+- Integrate ThreatForge ThreatModel into larger applications.
 - Combine ThreatForge ThreatModel with proprietary software.
-- Build commercial security products using ThreatForge ThreatModel.
-- Create and distribute modified versions.
+- Create commercial products incorporating applicable ThreatForge components, subject to MPL-2.0 requirements.
 
 ---
 
-## File-Level Copyleft
+## 2. File-Level Copyleft
 
-ThreatForge ThreatModel uses the **MPL-2.0 file-level copyleft model**.
+ThreatForge ThreatModel uses the **file-level copyleft** model provided by the Mozilla Public License 2.0.
 
-If you modify an MPL-covered ThreatForge ThreatModel source file and distribute that modified version, the applicable source file and its modifications must remain available under the MPL-2.0, subject to the requirements of the license.
+If you modify an MPL-covered ThreatForge ThreatModel source file and distribute that modified file, the applicable source file and its modifications must remain available under the MPL-2.0 in accordance with the requirements of the license.
 
-This does **not** require an entire application containing ThreatForge ThreatModel to become open source.
+The MPL-2.0 does **not** require an entire application to become open source merely because it uses ThreatForge ThreatModel.
 
-A larger proprietary application may contain ThreatForge ThreatModel MPL-covered files together with separate proprietary files, provided the requirements of the MPL-2.0 are satisfied.
-
----
-
-## Commercial Use
-
-Commercial use of ThreatForge ThreatModel is permitted.
-
-Organizations may:
-
-- Integrate ThreatForge ThreatModel into commercial security products.
-- Use it in CI/CD pipelines.
-- Use it for internal security assessments.
-- Use it for security architecture and threat-modeling activities.
-- Use it as part of authorized security services.
-- Modify it for their own requirements.
-- Build additional functionality around it.
-
-Distribution of MPL-covered ThreatForge ThreatModel source code remains subject to the requirements of the MPL-2.0.
-
----
-
-## Modifications and Contributions
-
-You may modify ThreatForge ThreatModel.
-
-The MPL-2.0 does **not** require modified code to be submitted as a GitHub pull request to the ThreatForge ThreatModel repository.
-
-However, upstream contributions are strongly encouraged.
-
-If you improve ThreatForge ThreatModel, consider contributing those improvements back to the project so that the wider security community can benefit.
-
-Examples include:
-
-- New architecture ingestion sources.
-- Kubernetes relationship rules.
-- Terraform analysis.
-- Helm and Kustomize support.
-- Data-flow detection.
-- Threat-modeling rules.
-- STRIDE rules.
-- Risk-scoring improvements.
-- Security controls.
-- Detection logic.
-- New report formats.
-- Bug fixes.
-- Performance improvements.
-- Documentation.
-- Tests.
-
----
-
-## Third-Party Components
-
-ThreatForge ThreatModel may use third-party libraries, frameworks, tools, rules, datasets, or other software components.
-
-Third-party components may be distributed under licenses different from the MPL-2.0.
-
-Those components remain subject to their respective licenses.
-
-Users and distributors are responsible for complying with applicable third-party license requirements.
-
----
-
-## License Notices
-
-License and copyright notices contained in MPL-covered ThreatForge ThreatModel source files must not be removed or altered except as permitted by the MPL-2.0.
-
-MPL-covered source files may contain:
+A larger work may contain:
 
 ```text
-SPDX-License-Identifier: MPL-2.0
+ThreatForge ThreatModel
+        +
+Proprietary Code
+        +
+Other Open Source Components
+        +
+Commercial Components
+```
+
+---
+
+## 3. Attribution
+
+Copyright © ThreatForge ThreatModel contributors.
+Repository: https://github.com/rmr369/threatforge-threatmodel
