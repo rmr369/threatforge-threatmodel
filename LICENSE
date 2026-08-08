@@ -1,17 +1,110 @@
-                                 Apache License
-                           Version 2.0, January 2004
-                        http://www.apache.org/licenses/
+# ThreatForge ThreatModel License
 
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
+## Mozilla Public License 2.0
 
-       http://www.apache.org/licenses/LICENSE-2.0
+**ThreatForge ThreatModel** is licensed under the **Mozilla Public License, Version 2.0 (MPL-2.0)**.
 
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
+Official license:
 
-   Full text: https://www.apache.org/licenses/LICENSE-2.0.txt
+https://www.mozilla.org/en-US/MPL/2.0/
+
+The complete legal terms of the Mozilla Public License 2.0 apply to this project.
+
+---
+
+## What You Can Do
+
+Subject to the MPL-2.0, you may:
+
+- Use ThreatForge ThreatModel for personal purposes.
+- Use ThreatForge ThreatModel for commercial purposes.
+- Copy and redistribute ThreatForge ThreatModel.
+- Modify the source code.
+- Create derivative works.
+- Integrate ThreatForge ThreatModel into larger software products.
+- Combine ThreatForge ThreatModel with proprietary software.
+- Build commercial security products using ThreatForge ThreatModel.
+- Create and distribute modified versions.
+
+---
+
+## File-Level Copyleft
+
+ThreatForge ThreatModel uses the **MPL-2.0 file-level copyleft model**.
+
+If you modify an MPL-covered ThreatForge ThreatModel source file and distribute that modified version, the applicable source file and its modifications must remain available under the MPL-2.0, subject to the requirements of the license.
+
+This does **not** require an entire application containing ThreatForge ThreatModel to become open source.
+
+A larger proprietary application may contain ThreatForge ThreatModel MPL-covered files together with separate proprietary files, provided the requirements of the MPL-2.0 are satisfied.
+
+---
+
+## Commercial Use
+
+Commercial use of ThreatForge ThreatModel is permitted.
+
+Organizations may:
+
+- Integrate ThreatForge ThreatModel into commercial security products.
+- Use it in CI/CD pipelines.
+- Use it for internal security assessments.
+- Use it for security architecture and threat-modeling activities.
+- Use it as part of authorized security services.
+- Modify it for their own requirements.
+- Build additional functionality around it.
+
+Distribution of MPL-covered ThreatForge ThreatModel source code remains subject to the requirements of the MPL-2.0.
+
+---
+
+## Modifications and Contributions
+
+You may modify ThreatForge ThreatModel.
+
+The MPL-2.0 does **not** require modified code to be submitted as a GitHub pull request to the ThreatForge ThreatModel repository.
+
+However, upstream contributions are strongly encouraged.
+
+If you improve ThreatForge ThreatModel, consider contributing those improvements back to the project so that the wider security community can benefit.
+
+Examples include:
+
+- New architecture ingestion sources.
+- Kubernetes relationship rules.
+- Terraform analysis.
+- Helm and Kustomize support.
+- Data-flow detection.
+- Threat-modeling rules.
+- STRIDE rules.
+- Risk-scoring improvements.
+- Security controls.
+- Detection logic.
+- New report formats.
+- Bug fixes.
+- Performance improvements.
+- Documentation.
+- Tests.
+
+---
+
+## Third-Party Components
+
+ThreatForge ThreatModel may use third-party libraries, frameworks, tools, rules, datasets, or other software components.
+
+Third-party components may be distributed under licenses different from the MPL-2.0.
+
+Those components remain subject to their respective licenses.
+
+Users and distributors are responsible for complying with applicable third-party license requirements.
+
+---
+
+## License Notices
+
+License and copyright notices contained in MPL-covered ThreatForge ThreatModel source files must not be removed or altered except as permitted by the MPL-2.0.
+
+MPL-covered source files may contain:
+
+```text
+SPDX-License-Identifier: MPL-2.0
