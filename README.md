@@ -7,7 +7,8 @@
 [![tests](https://img.shields.io/badge/tests-78%20passing-brightgreen)](tests/test_pipeline.py)
 [![rules](https://img.shields.io/badge/rules-77%20across%207%20packs-blue)](threatforge/rules/packs)
 [![python](https://img.shields.io/badge/python-3.9%2B-blue)](pyproject.toml)
-[![licence](https://img.shields.io/badge/licence-Apache--2.0-lightgrey)](LICENSE)
+[![licence](https://img.shields.io/badge/licence-MPL--2.0-lightgrey)](LICENSE)
+
 
 Point it at a repository. It builds a connected architecture graph across
 Kubernetes, Helm, Kustomize, Terraform, Dockerfiles and Compose; derives trust
@@ -773,4 +774,4 @@ threatforge/
 Contributions welcome — new rule packs and new ingestors are the two highest-
 value additions, and neither requires touching the core.
 
-Licence: Apache-2.0.
+Licence: MPL-2.0.
