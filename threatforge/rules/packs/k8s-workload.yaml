@@ -1,0 +1,762 @@
+pack: k8s-workload
+description: >
+  Container and pod runtime posture. These rules fire on the container asset so
+  that a single bad sidecar in an otherwise healthy Deployment is reported
+  precisely, not smeared across the whole workload.
+
+rules:
+
+  - id: TF-K8S-001
+    title: Container runs in privileged mode
+    severity: critical
+    stride: [E, T, I]
+    confidence: confirmed
+    applies_to: {kind: [Container]}
+    when:
+      all:
+        - {fact: container.privileged, op: is_true}
+    description: >
+      {{ component }} runs with `privileged: true`, which disables essentially every
+      container isolation control: all Linux capabilities are granted, /dev is fully
+      exposed, and AppArmor/seccomp are effectively bypassed. An attacker with code
+      execution in this container can mount the host filesystem, write to
+      /etc/kubernetes, read the kubelet credentials, and take over the node -- and
+      from the node, every other pod scheduled on it.
+    evidence:
+      - {fact: container.privileged, text: "securityContext.privileged is true", expected: false}
+    remediation:
+      summary: Remove privileged mode and grant only the specific capabilities needed.
+      guidance: >
+        Identify why privilege was needed. The usual culprits are raw sockets
+        (NET_RAW), binding to ports below 1024 (NET_BIND_SERVICE), or device access.
+        Grant those capabilities individually. If the workload genuinely needs host
+        access (CNI plugin, node exporter), isolate it on dedicated nodes with taints
+        and document the exception.
+      patch: |
+        securityContext:
+          privileged: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+            add: []            # add back only what is proven necessary
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-250, CWE-269]
+      mitre: [T1611, T1610]
+      cis: ["5.2.1"]
+      nist: [AC-6, CM-7]
+      owasp: [K01]
+    tags: [container-escape, privilege]
+
+  - id: TF-K8S-002
+    title: Container can escalate privileges
+    severity: high
+    stride: [E]
+    confidence: confirmed
+    applies_to: {kind: [Container]}
+    when:
+      all:
+        - {fact: container.allow_priv_esc, op: is_true}
+        - {fact: container.privileged, op: is_false}
+    description: >
+      allowPrivilegeEscalation is not set to false on {{ component }}. A setuid binary
+      or a `sudo`-like helper inside the image can gain more privileges than its parent
+      process, which turns a limited RCE into root inside the container and shortens
+      the path to a container escape.
+    evidence:
+      - {fact: container.allow_priv_esc_explicit, text: "allowPrivilegeEscalation is unset or true", expected: false}
+    remediation:
+      summary: Set allowPrivilegeEscalation to false.
+      patch: |
+        securityContext:
+          allowPrivilegeEscalation: false
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-269]
+      mitre: [T1548]
+      cis: ["5.2.5"]
+      nist: [AC-6]
+    tags: [privilege, baseline]
+
+  - id: TF-K8S-003
+    title: Container runs as root
+    severity: high
+    stride: [E, T]
+    confidence: likely
+    applies_to: {kind: [Container]}
+    when:
+      all:
+        - {fact: container.run_as_root, op: is_true}
+    description: >
+      {{ component }} has no runAsNonRoot/runAsUser constraint, so it runs as UID 0
+      inside the container. Root in the container means write access to every file in
+      the image, the ability to install tooling at runtime, and a materially easier
+      escape if a kernel or runtime vulnerability is available.
+    evidence:
+      - {fact: container.run_as_user, text: "runAsUser is unset or 0", expected: ">= 1000"}
+      - {fact: container.run_as_non_root, text: "runAsNonRoot is not true", expected: true}
+    remediation:
+      summary: Run as a dedicated non-root UID.
+      guidance: >
+        Add a non-root user in the Dockerfile, then enforce it in the manifest. Setting
+        runAsNonRoot alone makes the kubelet refuse to start an image whose USER is root,
+        which surfaces the problem at deploy time rather than at audit time.
+      patch: |
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 10001
+          runAsGroup: 10001
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-250]
+      mitre: [T1610]
+      cis: ["5.2.6"]
+      nist: [AC-6]
+      owasp: [K01]
+    tags: [privilege, baseline]
+
+  - id: TF-K8S-004
+    title: Container mounts the container runtime socket
+    severity: critical
+    stride: [E, T, I]
+    confidence: confirmed
+    applies_to: {tag: [workload]}
+    when:
+      all:
+        - {fact: pod.container_runtime_socket, op: is_true}
+    description: >
+      {{ component }} mounts the Docker/containerd/CRI-O socket. This is equivalent to
+      granting root on the node: anyone who can write to the socket can start a new
+      privileged container with the host filesystem mounted. There is no meaningful
+      sandbox left.
+    evidence:
+      - {fact: pod.host_paths, text: "hostPath volume includes the runtime socket"}
+    remediation:
+      summary: Remove the socket mount; use a rootless build tool or a proxy with an allowlist.
+      guidance: >
+        For image builds use Kaniko, Buildah rootless, or BuildKit with the rootless
+        daemon. For log/metric collection use the kubelet API or the CRI API through a
+        dedicated read-only proxy such as docker-socket-proxy with the API surface
+        restricted to what the agent actually needs.
+      patch: |
+        # delete this volume and its volumeMount
+        # - name: docker-sock
+        #   hostPath:
+        #     path: /var/run/docker.sock
+      effort: high
+      breaking_risk: high
+    references:
+      cwe: [CWE-250, CWE-284]
+      mitre: [T1610, T1611]
+      cis: ["5.2.4"]
+      nist: [AC-6, SC-7]
+    tags: [container-escape, critical-path]
+
+  - id: TF-K8S-005
+    title: Pod mounts a sensitive host path
+    severity: high
+    stride: [E, T, I]
+    confidence: confirmed
+    applies_to: {tag: [workload]}
+    when:
+      all:
+        - {fact: pod.sensitive_host_path, op: non_empty}
+        - {fact: pod.container_runtime_socket, op: is_false}
+    description: >
+      {{ component }} mounts host path(s) {{ pod.sensitive_host_path }} into the pod.
+      Paths such as /, /etc, /proc, /var/lib/kubelet and /root expose node credentials,
+      other containers' filesystems, and kubelet client certificates. A read-only mount
+      of /var/lib/kubelet is still enough to steal service account tokens belonging to
+      every pod on that node.
+    evidence:
+      - {fact: pod.sensitive_host_path, text: "hostPath volumes: {{ pod.sensitive_host_path }}", expected: "none"}
+    remediation:
+      summary: Replace hostPath with a PVC, emptyDir, or a CSI driver.
+      guidance: >
+        If node-level access is genuinely required, scope the mount to the narrowest
+        possible subdirectory, mark it readOnly, and pin the workload to dedicated nodes.
+        Then enforce a policy (Kyverno/Gatekeeper/PSA restricted) so no other workload
+        can copy the pattern.
+      patch: |
+        volumes:
+          - name: data
+            persistentVolumeClaim:
+              claimName: app-data
+        # or, for scratch space:
+          - name: scratch
+            emptyDir: {}
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-552, CWE-668]
+      mitre: [T1611, T1552.001]
+      cis: ["5.2.4"]
+      nist: [AC-6, SC-4]
+    tags: [container-escape, storage]
+
+  - id: TF-K8S-006
+    title: Pod shares the host network namespace
+    severity: high
+    stride: [S, I, T]
+    confidence: confirmed
+    applies_to: {tag: [workload]}
+    when:
+      all:
+        - {fact: pod.host_network, op: is_true}
+    description: >
+      {{ component }} runs with hostNetwork: true. The pod shares the node's network
+      namespace, so it can sniff traffic destined for other pods on the node, bind to
+      privileged node ports, bypass NetworkPolicy entirely (policies do not apply to
+      host-network pods), and reach the kubelet on localhost:10250.
+    evidence:
+      - {fact: pod.host_network, text: "spec.hostNetwork is true", expected: false}
+    remediation:
+      summary: Use the pod network and expose the workload through a Service.
+      patch: |
+        spec:
+          hostNetwork: false
+          dnsPolicy: ClusterFirst
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-668]
+      mitre: [T1040, T1610]
+      cis: ["5.2.4"]
+      nist: [SC-7]
+    tags: [network, isolation]
+
+  - id: TF-K8S-007
+    title: Pod shares the host PID or IPC namespace
+    severity: high
+    stride: [I, T, E]
+    confidence: confirmed
+    applies_to: {tag: [workload]}
+    when:
+      any:
+        - {fact: pod.host_pid, op: is_true}
+        - {fact: pod.host_ipc, op: is_true}
+    description: >
+      Sharing hostPID lets the container see and signal every process on the node,
+      and read secrets from other processes' /proc/<pid>/environ. Sharing hostIPC
+      exposes shared memory segments belonging to other workloads.
+    evidence:
+      - {fact: pod.host_pid, text: "spec.hostPID", expected: false}
+      - {fact: pod.host_ipc, text: "spec.hostIPC", expected: false}
+    remediation:
+      summary: Remove hostPID and hostIPC.
+      patch: |
+        spec:
+          hostPID: false
+          hostIPC: false
+      effort: low
+      breaking_risk: medium
+    references:
+      cwe: [CWE-668]
+      mitre: [T1057, T1611]
+      cis: ["5.2.2", "5.2.3"]
+      nist: [SC-4]
+    tags: [isolation]
+
+  - id: TF-K8S-008
+    title: Container adds dangerous Linux capabilities
+    severity: high
+    stride: [E, T]
+    confidence: confirmed
+    applies_to: {kind: [Container]}
+    when:
+      all:
+        - {fact: container.dangerous_caps, op: non_empty}
+    description: >
+      {{ component }} adds capabilities {{ container.dangerous_caps }}. SYS_ADMIN is
+      close to full root; SYS_PTRACE allows reading memory of other processes;
+      NET_ADMIN permits traffic redirection and ARP spoofing; SYS_MODULE allows loading
+      kernel modules, which is a direct host takeover.
+    evidence:
+      - {fact: container.caps_added, text: "capabilities.add = {{ container.caps_added }}", expected: "[]"}
+    remediation:
+      summary: Drop ALL, then add back only the minimum.
+      patch: |
+        securityContext:
+          capabilities:
+            drop: ["ALL"]
+            add: ["NET_BIND_SERVICE"]   # example only
+      effort: low
+      breaking_risk: medium
+    references:
+      cwe: [CWE-250]
+      mitre: [T1611]
+      cis: ["5.2.8", "5.2.9"]
+      nist: [AC-6, CM-7]
+    tags: [privilege]
+
+  - id: TF-K8S-009
+    title: Container does not drop all capabilities
+    severity: medium
+    stride: [E]
+    confidence: confirmed
+    applies_to: {kind: [Container]}
+    when:
+      all:
+        - {fact: container.drops_all, op: is_false}
+        - {fact: container.privileged, op: is_false}
+        - {fact: container.dangerous_caps, op: empty}
+    description: >
+      {{ component }} keeps the default Docker capability set (CHOWN, DAC_OVERRIDE,
+      FOWNER, SETUID, SETGID, NET_RAW and others). SETUID/SETGID enable local privilege
+      escalation via setuid binaries; NET_RAW enables ARP/DNS spoofing against pods
+      sharing the node network.
+    evidence:
+      - {fact: container.caps_dropped, text: "capabilities.drop does not include ALL", expected: "[ALL]"}
+    remediation:
+      summary: Drop ALL capabilities as the baseline.
+      patch: |
+        securityContext:
+          capabilities:
+            drop: ["ALL"]
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-250]
+      mitre: [T1548]
+      cis: ["5.2.9"]
+      nist: [CM-7]
+    tags: [baseline, hardening]
+
+  - id: TF-K8S-010
+    title: Container root filesystem is writable
+    severity: medium
+    stride: [T]
+    confidence: confirmed
+    applies_to: {kind: [Container]}
+    when:
+      all:
+        - {fact: container.read_only_root_fs, op: is_false}
+    description: >
+      A writable root filesystem lets an attacker with code execution drop a web shell,
+      overwrite application binaries, or install persistence that survives a process
+      restart. It also removes a cheap tripwire: with a read-only root, most
+      post-exploitation tooling fails immediately and noisily.
+    evidence:
+      - {fact: container.read_only_root_fs, text: "readOnlyRootFilesystem is not true", expected: true}
+    remediation:
+      summary: Make the root filesystem read-only and mount emptyDir for writable paths.
+      patch: |
+        securityContext:
+          readOnlyRootFilesystem: true
+        volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+        # volumes:
+        #   - name: tmp
+        #     emptyDir: {}
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-732]
+      mitre: [T1505.003, T1543]
+      cis: ["5.2.11"]
+      nist: [SI-7]
+    tags: [hardening, persistence]
+
+  - id: TF-K8S-011
+    title: Container image uses a mutable tag
+    severity: medium
+    stride: [T, S]
+    confidence: confirmed
+    applies_to: {kind: [Container]}
+    when:
+      all:
+        - {fact: container.latest_tag, op: is_true}
+    description: >
+      {{ component }} references image `{{ container.image }}` by a mutable tag. What
+      runs in production is therefore whatever the registry served at pull time. This
+      breaks reproducibility, defeats admission-time image scanning, and makes supply
+      chain tampering hard to detect -- an attacker who can push to the registry can
+      replace the image without any manifest change.
+    evidence:
+      - {fact: container.image, text: "image = {{ container.image }}", expected: "repo@sha256:..."}
+    remediation:
+      summary: Pin images by digest.
+      patch: |
+        image: myrepo/myapp@sha256:0f6a...   # digest, not :latest
+        imagePullPolicy: IfNotPresent
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-494, CWE-829]
+      mitre: [T1525, T1195.002]
+      cis: ["5.1.4"]
+      nist: [SI-7, CM-2]
+      owasp: [K06]
+    tags: [supply-chain]
+
+  - id: TF-K8S-012
+    title: Container image is not pinned by digest
+    severity: low
+    stride: [T]
+    confidence: confirmed
+    applies_to: {kind: [Container]}
+    when:
+      all:
+        - {fact: container.unpinned_image, op: is_true}
+        - {fact: container.latest_tag, op: is_false}
+    description: >
+      {{ component }} uses a version tag rather than a digest. Version tags are still
+      mutable in most registries, so this is weaker than it looks, though far better
+      than :latest.
+    evidence:
+      - {fact: container.image, text: "image = {{ container.image }}"}
+    remediation:
+      summary: Resolve the tag to a digest in CI and commit the digest.
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-829]
+      mitre: [T1195.002]
+      nist: [CM-2]
+    tags: [supply-chain, hygiene]
+
+  - id: TF-K8S-013
+    title: Container has no CPU or memory limits
+    severity: medium
+    stride: [D]
+    confidence: confirmed
+    applies_to: {kind: [Container]}
+    when:
+      all:
+        - {fact: container.no_limits, op: is_true}
+    description: >
+      Without resource limits, {{ component }} can consume all allocatable CPU and
+      memory on its node. A memory leak or a deliberately expensive request becomes a
+      node-wide outage: the kubelet begins evicting neighbouring pods, and a single
+      compromised workload becomes a cluster-wide denial of service primitive.
+    evidence:
+      - {fact: container.no_cpu_limit, text: "resources.limits.cpu is unset", expected: "set"}
+      - {fact: container.no_memory_limit, text: "resources.limits.memory is unset", expected: "set"}
+    remediation:
+      summary: Set requests and limits; enforce defaults with a LimitRange.
+      patch: |
+        resources:
+          requests: {cpu: "100m", memory: "128Mi"}
+          limits:   {cpu: "500m", memory: "512Mi"}
+      effort: low
+      breaking_risk: medium
+    references:
+      cwe: [CWE-770, CWE-400]
+      mitre: [T1499]
+      cis: ["5.7.3"]
+      nist: [SC-5]
+      owasp: [K07]
+    tags: [availability]
+
+  - id: TF-K8S-014
+    title: Pod does not set a seccomp profile
+    severity: medium
+    stride: [E]
+    confidence: confirmed
+    applies_to: {tag: [workload]}
+    when:
+      all:
+        - {fact: pod.has_seccomp, op: is_false}
+    description: >
+      No seccomp profile is applied, so the container may issue all ~350 syscalls.
+      Most container escapes published in the last several years relied on syscalls
+      that RuntimeDefault blocks outright.
+    evidence:
+      - {fact: pod.seccomp, text: "securityContext.seccompProfile is unset or Unconfined", expected: RuntimeDefault}
+    remediation:
+      summary: Apply the RuntimeDefault seccomp profile.
+      patch: |
+        spec:
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-693]
+      mitre: [T1611]
+      cis: ["5.7.2"]
+      nist: [SI-16, CM-7]
+    tags: [hardening, baseline]
+
+  - id: TF-K8S-015
+    title: Plaintext credential in container environment variables
+    severity: critical
+    stride: [I, S]
+    confidence: likely
+    applies_to: {kind: [Container]}
+    when:
+      all:
+        - {fact: container.plaintext_secret_env, op: non_empty}
+    description: >
+      Environment variables {{ container.plaintext_secret_env }} on {{ component }}
+      contain literal values and are named like credentials. Env vars are visible to
+      anyone with `kubectl describe pod`, are captured in crash dumps and in most
+      APM/error-tracking agents, are inherited by every child process, and are readable
+      from /proc/<pid>/environ by anything sharing the PID namespace.
+    evidence:
+      - {fact: container.plaintext_secret_env, text: "env vars with literal values: {{ container.plaintext_secret_env }}", expected: "secretKeyRef"}
+    remediation:
+      summary: Move the value into a Secret and reference it, or mount it as a file.
+      guidance: >
+        Files are preferable to env vars: they can be rotated without a pod restart and
+        are not inherited by child processes. Best of all, source from an external
+        secret manager (External Secrets Operator, Vault Agent, cloud CSI driver) so the
+        material never lives in the cluster's etcd at all.
+      patch: |
+        env:
+          - name: DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: app-db
+                key: password
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-798, CWE-522]
+      mitre: [T1552.001, T1552.007]
+      cis: ["5.4.1"]
+      nist: [IA-5, SC-28]
+      owasp: [K08]
+    tags: [secrets, critical-path]
+
+  - id: TF-K8S-016
+    title: Workload uses the default service account
+    severity: medium
+    stride: [E, S]
+    confidence: confirmed
+    applies_to: {tag: [workload]}
+    when:
+      all:
+        - {fact: pod.uses_default_sa, op: is_true}
+        - {fact: pod.automount_sa_token, op: not_in, value: [false]}
+    description: >
+      {{ component }} runs as the namespace `default` service account with its token
+      automounted. The default SA is shared by every workload in the namespace, so any
+      permission granted to it is granted to all of them, and token theft cannot be
+      attributed to a specific workload.
+    evidence:
+      - {fact: pod.service_account, text: "serviceAccountName is 'default'", expected: "a dedicated SA"}
+      - {fact: pod.automount_sa_token, text: "automountServiceAccountToken is not disabled", expected: false}
+    remediation:
+      summary: Create a dedicated ServiceAccount per workload; disable automount if the API is not used.
+      patch: |
+        spec:
+          serviceAccountName: myapp
+          automountServiceAccountToken: false   # if the pod never calls the API server
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-250, CWE-269]
+      mitre: [T1528, T1078.004]
+      cis: ["5.1.5", "5.1.6"]
+      nist: [AC-2, AC-6]
+      owasp: [K03]
+    tags: [identity, baseline]
+
+  - id: TF-K8S-017
+    title: Service account token automounted but unused API access
+    severity: low
+    stride: [E]
+    confidence: possible
+    applies_to: {tag: [workload]}
+    when:
+      all:
+        - {fact: pod.automount_sa_token, op: absent}
+        - {fact: pod.uses_default_sa, op: is_false}
+    description: >
+      automountServiceAccountToken is unset, so a projected API token is mounted at
+      /var/run/secrets/kubernetes.io/serviceaccount. If the workload does not call the
+      Kubernetes API, this token is pure attack surface -- it is the first thing
+      post-exploitation tooling looks for.
+    evidence:
+      - {fact: pod.automount_sa_token, text: "automountServiceAccountToken is unset (defaults to true)", expected: false}
+    remediation:
+      summary: Set automountServiceAccountToken false unless the pod calls the API server.
+      patch: |
+        spec:
+          automountServiceAccountToken: false
+      effort: low
+      breaking_risk: medium
+    references:
+      cwe: [CWE-522]
+      mitre: [T1528]
+      cis: ["5.1.6"]
+      nist: [AC-6]
+    tags: [identity, hygiene]
+
+  - id: TF-K8S-018
+    title: Container binds a host port
+    severity: medium
+    stride: [S, I, D]
+    confidence: confirmed
+    applies_to: {kind: [Container]}
+    when:
+      all:
+        - {fact: container.host_ports, op: non_empty}
+    description: >
+      {{ component }} binds host port(s) {{ container.host_ports }}. The service is
+      reachable on every node IP, bypassing Service-level controls and NetworkPolicy,
+      and it constrains scheduling in ways that make node-level firewalling brittle.
+    evidence:
+      - {fact: container.host_ports, text: "hostPort = {{ container.host_ports }}", expected: "none"}
+    remediation:
+      summary: Expose through a Service and an Ingress instead of a host port.
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-668]
+      mitre: [T1571]
+      cis: ["5.2.4"]
+      nist: [SC-7]
+    tags: [network]
+
+  - id: TF-K8S-019
+    title: Workload has no liveness or readiness probe
+    severity: low
+    stride: [D]
+    confidence: confirmed
+    applies_to: {kind: [Container]}
+    when:
+      all:
+        - {fact: container.no_probes, op: is_true}
+        - {fact: container.role, op: eq, value: main}
+    description: >
+      Without probes, Kubernetes cannot tell a hung process from a healthy one. A
+      deadlocked or resource-starved container keeps receiving traffic, which turns a
+      partial failure into a user-visible outage and masks the early signal of an
+      ongoing resource-exhaustion attack.
+    evidence:
+      - {fact: container.no_liveness_probe, text: "no livenessProbe", expected: "defined"}
+      - {fact: container.no_readiness_probe, text: "no readinessProbe", expected: "defined"}
+    remediation:
+      summary: Add liveness and readiness probes.
+      patch: |
+        readinessProbe:
+          httpGet: {path: /healthz, port: 8080}
+          initialDelaySeconds: 5
+        livenessProbe:
+          httpGet: {path: /healthz, port: 8080}
+          initialDelaySeconds: 15
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-703]
+      mitre: [T1499]
+      nist: [SI-4]
+    tags: [availability, hygiene]
+
+  - id: TF-K8S-020
+    title: Single-replica workload is a single point of failure
+    severity: low
+    stride: [D]
+    confidence: likely
+    applies_to: {tag: [workload]}
+    when:
+      all:
+        - {fact: pod.single_replica, op: is_true}
+        - {fact: internet_reachable, op: is_true}
+    description: >
+      {{ component }} is internet-reachable but runs a single replica, so any crash,
+      eviction, or node drain takes the service down. It also means a single successful
+      resource-exhaustion request has full impact.
+    evidence:
+      - {fact: pod.replicas, text: "spec.replicas = {{ pod.replicas }}", expected: ">= 2"}
+    remediation:
+      summary: Run at least two replicas with a PodDisruptionBudget and anti-affinity.
+      patch: |
+        spec:
+          replicas: 3
+        # plus a PodDisruptionBudget with minAvailable: 2
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-1188]
+      mitre: [T1499]
+      nist: [CP-2]
+    tags: [availability]
+
+  - id: TF-K8S-021
+    title: Image pulled from an unapproved registry
+    severity: medium
+    stride: [T, S]
+    confidence: confirmed
+    applies_to: {kind: [Container]}
+    when:
+      all:
+        - {fact: container.registry_allowed, op: is_false}
+    description: >
+      {{ component }} pulls from `{{ container.image_registry }}`, which is not in the
+      configured allowlist. Unvetted registries are a direct supply-chain path into the
+      cluster and are typically not covered by image scanning or signature verification.
+    evidence:
+      - {fact: container.image, text: "image = {{ container.image }}"}
+    remediation:
+      summary: Mirror the image into an approved registry and enforce the allowlist at admission.
+      guidance: >
+        Add a Kyverno/Gatekeeper policy rejecting images outside the allowlist, and
+        require cosign signature verification for anything in it.
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-829]
+      mitre: [T1195.002]
+      cis: ["5.5.1"]
+      nist: [SA-12, CM-7]
+      owasp: [K06]
+    tags: [supply-chain]
+
+  - id: TF-K8S-022
+    title: imagePullPolicy Always with a mutable tag hides rollback state
+    severity: low
+    stride: [T]
+    confidence: possible
+    applies_to: {kind: [Container]}
+    when:
+      all:
+        - {fact: container.pull_policy, op: eq, value: Always}
+        - {fact: container.latest_tag, op: is_true}
+    description: >
+      Combining a mutable tag with imagePullPolicy Always means every pod restart can
+      silently change the running code, including after an incident when you most need
+      the environment to be stable.
+    evidence:
+      - {fact: container.pull_policy, text: "imagePullPolicy = Always with mutable tag"}
+    remediation:
+      summary: Pin by digest; then Always is harmless and IfNotPresent is sufficient.
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-494]
+      nist: [CM-2]
+    tags: [supply-chain, hygiene]
+
+  - id: TF-K8S-023
+    title: Pod shares its process namespace between containers
+    severity: medium
+    stride: [I, E]
+    confidence: confirmed
+    applies_to: {tag: [workload]}
+    when:
+      all:
+        - {fact: pod.share_process_namespace, op: is_true}
+    description: >
+      shareProcessNamespace lets every container in the pod see and signal the others'
+      processes and read their /proc/<pid>/environ. A compromised sidecar (often a
+      third-party agent) can extract the main container's secrets from memory and
+      environment.
+    evidence:
+      - {fact: pod.share_process_namespace, text: "spec.shareProcessNamespace is true", expected: false}
+    remediation:
+      summary: Remove shareProcessNamespace unless a debugging sidecar genuinely requires it.
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-668]
+      mitre: [T1057, T1552.007]
+      nist: [SC-4]
+    tags: [isolation]

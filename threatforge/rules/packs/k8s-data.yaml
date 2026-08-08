@@ -1,0 +1,248 @@
+pack: k8s-data
+description: Secrets, configuration, and persistent storage.
+
+rules:
+
+  - id: TF-DATA-001
+    title: Secret material committed to the repository
+    severity: critical
+    stride: [I, S]
+    confidence: confirmed
+    applies_to: {kind: [Secret]}
+    when:
+      all:
+        - {fact: secret.committed_to_repo, op: is_true}
+    description: >
+      {{ component }} contains inline `data`/`stringData` in a manifest tracked in
+      version control. base64 is an encoding, not encryption. Anyone with repository
+      read access -- including every CI job, every fork, and the full git history after
+      the value is "removed" -- has these credentials. Rotation is the only remedy once
+      this has been pushed.
+    evidence:
+      - {fact: secret.keys, text: "inline keys: {{ secret.keys }}", expected: "external secret reference"}
+    remediation:
+      summary: Rotate the credential, then source it from a secret manager.
+      guidance: >
+        Order of operations matters: rotate first (assume it is compromised), then
+        migrate. Use External Secrets Operator, Vault Agent Injector, Sealed Secrets, or
+        SOPS with a KMS key. Scrub git history with git-filter-repo and force-rotate any
+        credential that was ever pushed.
+      patch: |
+        apiVersion: external-secrets.io/v1beta1
+        kind: ExternalSecret
+        metadata:
+          name: {{ name }}
+          namespace: {{ namespace }}
+        spec:
+          secretStoreRef: {name: vault-backend, kind: SecretStore}
+          target: {name: {{ name }}}
+          data:
+            - secretKey: password
+              remoteRef: {key: prod/db, property: password}
+      effort: medium
+      breaking_risk: low
+    references:
+      cwe: [CWE-798, CWE-540, CWE-312]
+      mitre: [T1552.001, T1552.008]
+      cis: ["5.4.1"]
+      nist: [IA-5, SC-28]
+      owasp: [K08]
+    tags: [secrets, critical-path]
+
+  - id: TF-DATA-002
+    title: Credential-like values stored in a ConfigMap
+    severity: high
+    stride: [I]
+    confidence: likely
+    applies_to: {kind: [ConfigMap]}
+    when:
+      all:
+        - {fact: configmap.secretish_keys, op: non_empty}
+    description: >
+      {{ component }} holds keys {{ configmap.secretish_keys }} that look like
+      credentials. ConfigMaps get none of the (already modest) protections Secrets
+      receive: they are not candidates for encryption at rest by default, are routinely
+      granted broad read access, and are frequently dumped wholesale into logs and
+      support bundles.
+    evidence:
+      - {fact: configmap.secretish_keys, text: "credential-like keys: {{ configmap.secretish_keys }}", expected: "none"}
+    remediation:
+      summary: Move these keys into a Secret or an external secret store, and rotate them.
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-522, CWE-312]
+      mitre: [T1552.001]
+      nist: [SC-28, IA-5]
+      owasp: [K08]
+    tags: [secrets]
+
+  - id: TF-DATA-003
+    title: Secret is reachable from an internet-facing workload
+    severity: high
+    stride: [I]
+    confidence: likely
+    applies_to: {kind: [Secret]}
+    when:
+      all:
+        - {fact: internet_reachable, op: is_true}
+        - {fact: exposure_hops, op: lte, value: 4}
+    description: >
+      {{ component }} is only {{ exposure_hops }} hops from the internet along the
+      data-flow graph. An RCE in the internet-facing component in that chain yields this
+      secret directly. This is not a misconfiguration on its own -- it is a statement
+      about blast radius that should drive where you invest in detection.
+    evidence:
+      - {fact: exposure_hops, text: "shortest path from internet = {{ exposure_hops }} hops"}
+    remediation:
+      summary: Shorten the trust chain -- scope the secret, or broker access through a short-lived token.
+      guidance: >
+        Prefer workload identity (IRSA, Workload Identity, SPIFFE) over long-lived
+        secrets. Where a static secret is unavoidable, scope it to the single consumer
+        and rotate on a schedule short enough that theft has a bounded window.
+      effort: high
+      breaking_risk: medium
+    references:
+      cwe: [CWE-522]
+      mitre: [T1552]
+      nist: [SC-28, AC-6]
+    tags: [secrets, blast-radius]
+
+  - id: TF-DATA-004
+    title: Referenced Secret or ConfigMap is not defined in this repository
+    severity: low
+    stride: [D, T]
+    confidence: confirmed
+    applies_to: {kind: [Secret, ConfigMap]}
+    when:
+      all:
+        - {fact: tags, op: contains, value: undeclared_reference}
+    description: >
+      {{ component }} is referenced by a workload but never declared here. It is either
+      created out-of-band (an operator, a manual kubectl, a different repository) or the
+      reference is broken. Out-of-band secrets are invisible to review and to this
+      threat model, which is itself the finding.
+    evidence:
+      - {fact: name, text: "referenced but not declared in scanned sources"}
+    remediation:
+      summary: Declare the resource, or document where it comes from and who controls it.
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-1059]
+      nist: [CM-2, CM-8]
+    tags: [hygiene, coverage]
+
+  - id: TF-DATA-005
+    title: PersistentVolume retains data after claim deletion
+    severity: low
+    stride: [I]
+    confidence: confirmed
+    applies_to: {kind: [PersistentVolume]}
+    when:
+      any:
+        - {fact: pv.reclaim_policy, op: eq, value: Retain}
+    description: >
+      {{ component }} uses reclaimPolicy Retain. The underlying disk survives the claim,
+      so data persists after the workload is deleted and may be re-bound by an unrelated
+      workload. Retain is often the correct choice for durability -- the risk is that it
+      is rarely paired with a documented deletion process.
+    evidence:
+      - {fact: pv.reclaim_policy, text: "persistentVolumeReclaimPolicy = Retain"}
+    remediation:
+      summary: Document the wipe/deletion procedure, or use Delete with backups.
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-212]
+      mitre: [T1530]
+      nist: [MP-6, SC-28]
+    tags: [storage, data-lifecycle]
+
+  - id: TF-DATA-006
+    title: PersistentVolume is backed by a host path
+    severity: high
+    stride: [T, I]
+    confidence: confirmed
+    applies_to: {kind: [PersistentVolume]}
+    when:
+      all:
+        - {fact: pv.host_path, op: is_true}
+    description: >
+      {{ component }} is a hostPath volume. Data lives on whichever node the pod lands
+      on, is not replicated, is readable by anything else on that node, and disappears
+      if the node is replaced. It also gives any pod that can bind this PV a foothold on
+      the node filesystem.
+    evidence:
+      - {fact: pv.host_path, text: "spec.hostPath is set", expected: "a CSI driver or cloud disk"}
+    remediation:
+      summary: Use a CSI-backed StorageClass with encryption at rest.
+      effort: high
+      breaking_risk: high
+    references:
+      cwe: [CWE-552]
+      mitre: [T1611]
+      nist: [SC-28, CP-9]
+    tags: [storage, container-escape]
+
+  - id: TF-DATA-007
+    title: PersistentVolume allows multi-writer access
+    severity: low
+    stride: [T]
+    confidence: confirmed
+    applies_to: {kind: [PersistentVolume]}
+    when:
+      all:
+        - {fact: pv.access_modes, op: any_in, value: [ReadWriteMany]}
+    description: >
+      ReadWriteMany allows several pods to write the same volume concurrently. Compromise
+      of any one of them means tampering with data all of them trust, and there is no
+      per-writer attribution.
+    evidence:
+      - {fact: pv.access_modes, text: "accessModes = {{ pv.access_modes }}"}
+    remediation:
+      summary: Use ReadWriteOnce where shared write access is not genuinely required.
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-732]
+      nist: [AC-3, SI-7]
+    tags: [storage]
+
+  - id: TF-DATA-008
+    title: Namespace has no ResourceQuota
+    severity: low
+    stride: [D]
+    confidence: confirmed
+    applies_to: {kind: [Namespace]}
+    when:
+      all:
+        - {fact: ns.has_quota, op: is_false}
+    description: >
+      Namespace {{ name }} has no ResourceQuota, so a single runaway or malicious
+      workload here can consume the cluster's entire allocatable capacity and starve
+      every other tenant.
+    evidence:
+      - {fact: ns.has_quota, text: "no ResourceQuota found for this namespace", expected: true}
+    remediation:
+      summary: Add a ResourceQuota and a LimitRange with sane defaults.
+      patch: |
+        apiVersion: v1
+        kind: ResourceQuota
+        metadata: {name: default-quota, namespace: {{ name }}}
+        spec:
+          hard:
+            requests.cpu: "20"
+            requests.memory: 40Gi
+            limits.cpu: "40"
+            limits.memory: 80Gi
+            pods: "100"
+      effort: low
+      breaking_risk: medium
+    references:
+      cwe: [CWE-770]
+      mitre: [T1496, T1499]
+      cis: ["5.7.1"]
+      nist: [SC-5]
+      owasp: [K07]
+    tags: [availability, governance]

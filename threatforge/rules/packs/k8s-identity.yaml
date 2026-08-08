@@ -1,0 +1,226 @@
+pack: k8s-identity
+description: RBAC, service accounts, and identity trust relationships.
+
+rules:
+
+  - id: TF-RBAC-001
+    title: ClusterRole grants full cluster administration
+    severity: critical
+    stride: [E]
+    confidence: confirmed
+    applies_to: {kind: [ClusterRole]}
+    when:
+      all:
+        - {fact: rbac.cluster_admin, op: is_true}
+    description: >
+      {{ component }} grants `*` verbs on `*` resources cluster-wide. Any subject bound
+      to it owns the cluster: it can read every Secret in every namespace, create
+      privileged pods on any node, and modify admission webhooks to make the compromise
+      persistent and invisible.
+    evidence:
+      - {fact: rbac.verbs, text: "verbs include '*'", expected: "explicit verb list"}
+      - {fact: rbac.resources, text: "resources include '*'", expected: "explicit resource list"}
+    remediation:
+      summary: Replace the wildcard role with an explicitly enumerated least-privilege role.
+      guidance: >
+        Derive the real permission set from audit logs (`audit2rbac` or the API server
+        audit log filtered by the subject) rather than guessing. Bind cluster-admin only
+        to break-glass identities that are MFA-gated and alerted on.
+      patch: |
+        rules:
+          - apiGroups: ["apps"]
+            resources: ["deployments"]
+            verbs: ["get", "list", "watch", "update"]
+      effort: high
+      breaking_risk: high
+    references:
+      cwe: [CWE-269, CWE-732]
+      mitre: [T1078.004, T1098]
+      cis: ["5.1.1"]
+      nist: [AC-6, AC-2]
+      owasp: [K03]
+    tags: [rbac, critical-path]
+
+  - id: TF-RBAC-002
+    title: Role uses wildcard verbs or resources
+    severity: high
+    stride: [E]
+    confidence: confirmed
+    applies_to: {kind: [Role, ClusterRole]}
+    when:
+      all:
+        - {fact: rbac.cluster_admin, op: is_false}
+        - any:
+            - {fact: rbac.wildcard_verbs, op: is_true}
+            - {fact: rbac.wildcard_resources, op: is_true}
+            - {fact: rbac.wildcard_api_groups, op: is_true}
+    description: >
+      {{ component }} uses `*` in verbs, resources, or apiGroups. Wildcards silently
+      expand as CRDs are installed: a role written before a service mesh was added now
+      grants control over that mesh's configuration too.
+    evidence:
+      - {fact: rbac.verbs, text: "verbs = {{ rbac.verbs }}"}
+      - {fact: rbac.resources, text: "resources = {{ rbac.resources }}"}
+    remediation:
+      summary: Enumerate the exact apiGroups, resources, and verbs required.
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-732]
+      mitre: [T1098]
+      cis: ["5.1.3"]
+      nist: [AC-6]
+      owasp: [K03]
+    tags: [rbac]
+
+  - id: TF-RBAC-003
+    title: Role can read Secrets
+    severity: high
+    stride: [I, E]
+    confidence: confirmed
+    applies_to: {kind: [Role, ClusterRole]}
+    when:
+      all:
+        - {fact: rbac.reads_secrets, op: is_true}
+        - {fact: rbac.cluster_admin, op: is_false}
+    description: >
+      {{ component }} permits get/list/watch on Secrets. In Kubernetes, read access to
+      Secrets in a namespace is effectively equal to the union of every identity whose
+      credentials are stored there -- including database passwords, cloud keys, and
+      other service accounts' tokens.
+    evidence:
+      - {fact: rbac.resources, text: "resources include 'secrets' with read verbs"}
+    remediation:
+      summary: Scope to named Secrets with resourceNames, or remove the permission.
+      patch: |
+        rules:
+          - apiGroups: [""]
+            resources: ["secrets"]
+            resourceNames: ["myapp-db"]     # not all secrets in the namespace
+            verbs: ["get"]
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-522, CWE-732]
+      mitre: [T1552.007]
+      cis: ["5.1.2"]
+      nist: [AC-6, SC-28]
+      owasp: [K03]
+    tags: [rbac, secrets]
+
+  - id: TF-RBAC-004
+    title: Role enables a privilege escalation path
+    severity: critical
+    stride: [E]
+    confidence: confirmed
+    applies_to: {kind: [Role, ClusterRole]}
+    when:
+      all:
+        - {fact: rbac.escalation_paths, op: non_empty}
+    description: >
+      {{ component }} grants permissions that lead directly to higher privilege:
+      {{ rbac.escalation_paths }}. Examples of why these matter -- `pods/exec` gives a
+      shell in any pod including privileged ones; `escalate` lets a subject grant itself
+      permissions it does not have; `serviceaccounts/token` mints tokens for other
+      identities; write access to webhooks intercepts and rewrites every API request.
+    evidence:
+      - {fact: rbac.escalation_paths, text: "escalation-capable rules: {{ rbac.escalation_paths }}", expected: "none"}
+    remediation:
+      summary: Remove the escalation-capable verbs, or restrict them with resourceNames.
+      guidance: >
+        Treat these permissions the same way you treat cluster-admin: break-glass only,
+        bound to a named human identity, audited and alerted.
+      effort: high
+      breaking_risk: high
+    references:
+      cwe: [CWE-269]
+      mitre: [T1548, T1098, T1134]
+      cis: ["5.1.3"]
+      nist: [AC-6]
+      owasp: [K03]
+    tags: [rbac, critical-path, privilege]
+
+  - id: TF-RBAC-005
+    title: Role can write Secrets
+    severity: high
+    stride: [T, E]
+    confidence: confirmed
+    applies_to: {kind: [Role, ClusterRole]}
+    when:
+      all:
+        - {fact: rbac.writes_secrets, op: is_true}
+    description: >
+      Write access to Secrets allows an attacker to plant credentials that other
+      workloads will trust -- for example replacing a TLS keypair or an image pull
+      secret to redirect pulls to an attacker-controlled registry.
+    evidence:
+      - {fact: rbac.verbs, text: "write verbs on secrets: {{ rbac.verbs }}"}
+    remediation:
+      summary: Remove write access; provision Secrets through a controller instead.
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-732]
+      mitre: [T1098, T1552]
+      nist: [AC-6, SC-28]
+    tags: [rbac, secrets]
+
+  - id: TF-RBAC-006
+    title: Anonymous or unauthenticated subject bound to a role
+    severity: critical
+    stride: [S, E]
+    confidence: confirmed
+    applies_to: {kind: [RBACUser, RBACGroup]}
+    when:
+      all:
+        - {fact: tags, op: contains, value: anonymous}
+    description: >
+      {{ component }} binds cluster permissions to system:anonymous or
+      system:unauthenticated. Anyone who can reach the API server endpoint gets these
+      permissions with no credentials at all.
+    evidence:
+      - {fact: name, text: "subject = {{ name }}", expected: "a named identity"}
+    remediation:
+      summary: Delete the binding; require authentication for all API access.
+      effort: low
+      breaking_risk: high
+    references:
+      cwe: [CWE-306]
+      mitre: [T1078]
+      cis: ["5.1.1"]
+      nist: [AC-3, IA-2]
+    tags: [rbac, authentication, critical-path]
+
+  - id: TF-RBAC-007
+    title: Service account token automounted on the default service account
+    severity: medium
+    stride: [E]
+    confidence: confirmed
+    applies_to: {kind: [ServiceAccount]}
+    when:
+      all:
+        - {fact: sa.is_default, op: is_true}
+        - {fact: sa.automount, op: not_in, value: [false]}
+    description: >
+      The `default` ServiceAccount in namespace {{ namespace }} automounts its token
+      into every pod that does not specify another SA. This is the most commonly abused
+      foothold for lateral movement inside a namespace.
+    evidence:
+      - {fact: sa.automount, text: "automountServiceAccountToken is not false", expected: false}
+    remediation:
+      summary: Disable automount on the default service account.
+      patch: |
+        apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+          name: default
+          namespace: {{ namespace }}
+        automountServiceAccountToken: false
+      effort: low
+      breaking_risk: medium
+    references:
+      cwe: [CWE-522]
+      mitre: [T1528]
+      cis: ["5.1.5"]
+      nist: [AC-6]
+    tags: [identity, baseline]

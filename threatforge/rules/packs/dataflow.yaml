@@ -1,0 +1,141 @@
+pack: dataflow
+description: >
+  Rules that fire on edges rather than nodes. These are the classic threat-modelling
+  questions -- what crosses a trust boundary, is it encrypted, is it authenticated --
+  which node-level scanners structurally cannot answer.
+
+rules:
+
+  - id: TF-FLOW-001
+    title: Unencrypted flow from the internet
+    severity: high
+    stride: [I, T, S]
+    confidence: confirmed
+    applies_to: {element: [data_flow]}
+    when:
+      all:
+        - {fact: flow.from_internet, op: is_true}
+        - {fact: flow.encrypted, op: is_false}
+    description: >
+      {{ component }} carries traffic from an untrusted network without transport
+      encryption. Anything on the path -- ISP, cloud provider network, a compromised
+      intermediate -- can read and modify it.
+    evidence:
+      - {fact: flow.protocol, text: "protocol = {{ flow.protocol }}, encrypted = false", expected: "TLS"}
+    remediation:
+      summary: Terminate TLS at the edge and redirect plaintext.
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-319]
+      mitre: [T1040, T1557]
+      nist: [SC-8]
+      owasp: [K05]
+    tags: [transport, boundary]
+
+  - id: TF-FLOW-002
+    title: Sensitive data crosses a trust boundary
+    severity: medium
+    stride: [I, T]
+    confidence: likely
+    applies_to: {element: [data_flow]}
+    when:
+      all:
+        - {fact: flow.crosses_boundary, op: is_true}
+        - {fact: flow.sensitive, op: is_true}
+    description: >
+      {{ component }} moves data classified as {{ flow.data_classes }} across a trust
+      boundary. Each boundary crossing is a place where authentication, authorisation,
+      encryption, and logging all need to be re-established -- assumptions that held on
+      one side rarely hold on the other.
+    evidence:
+      - {fact: flow.boundary_crossed, text: "crosses {{ flow.boundary_crossed }}"}
+      - {fact: flow.data_classes, text: "carries {{ flow.data_classes }}"}
+    remediation:
+      summary: Enforce mTLS and explicit authorisation on this hop; log both sides.
+      guidance: >
+        A service mesh (Istio, Linkerd) gives mTLS and per-hop authorisation policy
+        without application changes, and produces the flow-level telemetry you need to
+        detect abuse of this path.
+      effort: high
+      breaking_risk: medium
+    references:
+      cwe: [CWE-311, CWE-306]
+      mitre: [T1557, T1041]
+      nist: [SC-8, AC-4]
+    tags: [boundary, encryption]
+
+  - id: TF-FLOW-003
+    title: Internet traffic reaches a data store in few hops
+    severity: high
+    stride: [I, T]
+    confidence: likely
+    applies_to: {element: [data_flow]}
+    when:
+      all:
+        - {fact: flow.target_element, op: eq, value: data_store}
+        - {fact: flow.target_sensitivity, op: gte, value: 4}
+        - {fact: flow.from_internet, op: is_true}
+    description: >
+      {{ component }} is a direct edge from the internet into a sensitive data store.
+      There is no application tier in between to authenticate, authorise, or rate-limit
+      the request.
+    evidence:
+      - {fact: flow.target_kind, text: "target is a {{ flow.target_kind }} holding {{ flow.data_classes }}"}
+    remediation:
+      summary: Put an authenticating, rate-limited service in front of the store.
+      effort: high
+      breaking_risk: high
+    references:
+      cwe: [CWE-306, CWE-284]
+      mitre: [T1190, T1530]
+      nist: [AC-3, SC-7]
+    tags: [boundary, exposure, critical-path]
+
+  - id: TF-FLOW-004
+    title: Trust boundary crossed with unknown encryption status
+    severity: low
+    stride: [I]
+    confidence: possible
+    applies_to: {element: [data_flow]}
+    when:
+      all:
+        - {fact: flow.crosses_boundary, op: is_true}
+        - {fact: flow.encrypted, op: absent}
+        - {fact: flow.kind, op: in, value: [routes-to, calls]}
+    description: >
+      Encryption status for {{ component }} cannot be determined from the manifests.
+      Inside a cluster this usually means plaintext unless a service mesh is enforcing
+      mTLS, which is worth confirming rather than assuming.
+    evidence:
+      - {fact: flow.protocol, text: "protocol = {{ flow.protocol }}, TLS not evident"}
+    remediation:
+      summary: Confirm whether a mesh enforces mTLS on this path; if not, enable it.
+      effort: medium
+      breaking_risk: low
+    references:
+      cwe: [CWE-311]
+      nist: [SC-8]
+    tags: [boundary, verify-manually]
+
+  - id: TF-FLOW-005
+    title: Flow inferred heuristically -- verify manually
+    severity: info
+    stride: []
+    confidence: possible
+    applies_to: {element: [data_flow]}
+    when:
+      all:
+        - {fact: flow.confidence, op: eq, value: possible}
+    description: >
+      {{ component }} was inferred from naming or image heuristics rather than an
+      explicit reference. It is included so the diagram is complete, but it should be
+      confirmed before any decision rests on it.
+    evidence:
+      - {fact: flow.kind, text: "relationship inferred heuristically"}
+    remediation:
+      summary: Confirm or remove; add an explicit reference so the next scan is certain.
+      effort: low
+      breaking_risk: low
+    references: {}
+    tags: [coverage, verify-manually]

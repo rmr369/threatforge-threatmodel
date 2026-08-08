@@ -1,0 +1,7 @@
+- id: threatforge
+  name: ThreatForge threat model gate
+  description: Fail the commit on new critical/high infrastructure threats.
+  entry: threatforge gate .
+  language: python
+  pass_filenames: false
+  files: \.(ya?ml|tf)$|Dockerfile

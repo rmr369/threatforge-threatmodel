@@ -1,0 +1,15 @@
+services:
+  api:
+    image: shop/api:latest
+    privileged: true
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_PASSWORD: supersecret123
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+  cache:
+    image: redis:7
+    network_mode: host
+volumes:
+  redisdata: {}

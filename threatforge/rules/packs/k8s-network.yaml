@@ -1,0 +1,415 @@
+pack: k8s-network
+description: Exposure, segmentation, and transport security.
+
+rules:
+
+  - id: TF-NET-001
+    title: Internet-reachable workload has no ingress NetworkPolicy
+    severity: high
+    stride: [S, T, I, E]
+    confidence: confirmed
+    applies_to: {tag: [workload]}
+    when:
+      all:
+        - {fact: net.has_ingress_policy, op: is_false}
+        - {fact: internet_reachable, op: is_true}
+    description: >
+      {{ component }} is reachable from the internet and no NetworkPolicy restricts
+      ingress to it. Kubernetes networking is flat by default, so once an attacker has
+      code execution in any pod in the cluster they can reach this workload directly on
+      its pod IP -- and this workload can reach everything else. Segmentation is the
+      control that turns one compromised pod into one compromised pod rather than a
+      cluster-wide incident.
+    evidence:
+      - {fact: net.has_ingress_policy, text: "no NetworkPolicy selects this workload for ingress", expected: true}
+      - {fact: exposure_hops, text: "hops from internet = {{ exposure_hops }}"}
+    remediation:
+      summary: Apply default-deny ingress in the namespace, then allow only required sources.
+      patch: |
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        metadata:
+          name: default-deny-ingress
+          namespace: {{ namespace }}
+        spec:
+          podSelector: {}
+          policyTypes: ["Ingress"]
+        ---
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        metadata:
+          name: allow-from-ingress-controller
+          namespace: {{ namespace }}
+        spec:
+          podSelector:
+            matchLabels: {app: {{ name }}}
+          policyTypes: ["Ingress"]
+          ingress:
+            - from:
+                - namespaceSelector:
+                    matchLabels: {kubernetes.io/metadata.name: ingress-nginx}
+              ports:
+                - {protocol: TCP, port: 8080}
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-923, CWE-1327]
+      mitre: [T1210, T1046]
+      cis: ["5.3.2"]
+      nist: [SC-7, AC-4]
+      owasp: [K05]
+    tags: [network, segmentation, critical-path]
+
+  - id: TF-NET-002
+    title: Workload has no egress NetworkPolicy
+    severity: medium
+    stride: [I, E]
+    confidence: confirmed
+    applies_to: {tag: [workload]}
+    when:
+      all:
+        - {fact: net.has_egress_policy, op: is_false}
+        - {fact: internet_reachable, op: is_true}
+    description: >
+      {{ component }} has unrestricted egress. That is the exfiltration path and the
+      command-and-control path: a compromised pod can reach any external host, any
+      internal service, and the cloud metadata endpoint at 169.254.169.254 to steal node
+      IAM credentials.
+    evidence:
+      - {fact: net.has_egress_policy, text: "no NetworkPolicy restricts egress", expected: true}
+    remediation:
+      summary: Default-deny egress; allow DNS plus the specific destinations required.
+      patch: |
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        metadata:
+          name: default-deny-egress
+          namespace: {{ namespace }}
+        spec:
+          podSelector: {}
+          policyTypes: ["Egress"]
+          egress:
+            - to:
+                - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+              ports: [{protocol: UDP, port: 53}]
+            - to:
+                - ipBlock:
+                    cidr: 0.0.0.0/0
+                    except: ["169.254.169.254/32", "10.0.0.0/8"]
+      effort: medium
+      breaking_risk: high
+    references:
+      cwe: [CWE-1327]
+      mitre: [T1041, T1552.005]
+      cis: ["5.3.2"]
+      nist: [SC-7, AC-4]
+      owasp: [K05]
+    tags: [network, exfiltration]
+
+  - id: TF-NET-003
+    title: Ingress does not enforce TLS
+    severity: high
+    stride: [I, S, T]
+    confidence: confirmed
+    applies_to: {kind: [Ingress]}
+    when:
+      all:
+        - {fact: ing.tls, op: is_false}
+    description: >
+      {{ component }} accepts traffic without TLS. Credentials, session cookies, and
+      response data cross the public internet in cleartext, and there is nothing to stop
+      an on-path attacker rewriting responses to serve malicious JavaScript.
+    evidence:
+      - {fact: ing.tls, text: "spec.tls is absent", expected: "a TLS block with a valid secret"}
+      - {fact: ing.hosts, text: "hosts = {{ ing.hosts }}"}
+    remediation:
+      summary: Add a TLS block and force HTTPS redirection.
+      patch: |
+        metadata:
+          annotations:
+            nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+            cert-manager.io/cluster-issuer: letsencrypt-prod
+        spec:
+          tls:
+            - hosts: ["app.example.com"]
+              secretName: app-tls
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-319, CWE-311]
+      mitre: [T1040, T1557]
+      cis: ["5.3.1"]
+      nist: [SC-8, SC-13]
+      owasp: [K05]
+    tags: [transport, critical-path]
+
+  - id: TF-NET-004
+    title: Ingress allows plaintext fallback
+    severity: medium
+    stride: [I, S]
+    confidence: confirmed
+    applies_to: {kind: [Ingress]}
+    when:
+      all:
+        - {fact: ing.tls, op: is_true}
+        - {fact: ing.ssl_redirect, op: is_false}
+        - {fact: ing.force_ssl_redirect, op: is_false}
+    description: >
+      TLS is configured but ssl-redirect is disabled, so the endpoint still answers on
+      plain HTTP. Clients that omit the scheme, and any attacker performing an SSL-strip
+      downgrade, get an unencrypted session.
+    evidence:
+      - {fact: ing.ssl_redirect, text: "ssl-redirect annotation is false", expected: true}
+    remediation:
+      summary: Enable force-ssl-redirect and send HSTS.
+      patch: |
+        metadata:
+          annotations:
+            nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+            nginx.ingress.kubernetes.io/configuration-snippet: |
+              more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains";
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-319]
+      mitre: [T1557]
+      nist: [SC-8]
+    tags: [transport]
+
+  - id: TF-NET-005
+    title: Internet-facing Ingress has no authentication or rate limiting
+    severity: medium
+    stride: [S, D]
+    confidence: likely
+    applies_to: {kind: [Ingress]}
+    when:
+      all:
+        - {fact: ing.has_auth, op: is_false}
+        - {fact: ing.has_rate_limit, op: is_false}
+    description: >
+      {{ component }} is exposed to the internet with no ingress-level authentication
+      and no rate limit. Whether that is acceptable depends on whether the backend
+      authenticates -- but the absence of a rate limit is unconditionally a denial of
+      service and credential-stuffing exposure.
+    evidence:
+      - {fact: ing.has_auth, text: "no auth-* annotations", expected: "auth at the edge or in the backend"}
+      - {fact: ing.has_rate_limit, text: "no rate-limit annotations", expected: "limit-rps configured"}
+    remediation:
+      summary: Add rate limiting at the ingress; add edge authentication for non-public endpoints.
+      patch: |
+        metadata:
+          annotations:
+            nginx.ingress.kubernetes.io/limit-rps: "20"
+            nginx.ingress.kubernetes.io/limit-connections: "10"
+            # for internal tools:
+            # nginx.ingress.kubernetes.io/auth-url: "https://oauth2-proxy.example.com/oauth2/auth"
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-307, CWE-770]
+      mitre: [T1110, T1499]
+      nist: [SC-5, IA-2]
+      owasp: [K07]
+    tags: [availability, authentication]
+
+  - id: TF-NET-006
+    title: Ingress uses a wildcard host
+    severity: medium
+    stride: [S, T]
+    confidence: confirmed
+    applies_to: {kind: [Ingress]}
+    when:
+      all:
+        - {fact: ing.wildcard_host, op: is_true}
+    description: >
+      A wildcard host binds this backend to every subdomain, which enables subdomain
+      takeover chains and makes cookie scoping decisions unsafe -- a cookie set on
+      *.example.com is readable by every other service under it.
+    evidence:
+      - {fact: ing.hosts, text: "hosts = {{ ing.hosts }}", expected: "explicit hostnames"}
+    remediation:
+      summary: List explicit hostnames.
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-346]
+      mitre: [T1584.001]
+      nist: [SC-7]
+    tags: [network]
+
+  - id: TF-NET-007
+    title: LoadBalancer Service has no source IP restriction
+    severity: high
+    stride: [S, D, I]
+    confidence: confirmed
+    applies_to: {kind: [Service]}
+    when:
+      all:
+        - {fact: svc.unrestricted_lb, op: is_true}
+    description: >
+      {{ component }} provisions a cloud load balancer with no loadBalancerSourceRanges,
+      so it is reachable from the entire internet. This bypasses the ingress controller
+      and therefore also bypasses any WAF, authentication, or rate limiting configured
+      there.
+    evidence:
+      - {fact: svc.type, text: "type = LoadBalancer with no loadBalancerSourceRanges", expected: "restricted CIDRs"}
+      - {fact: svc.ports, text: "ports = {{ svc.ports }}"}
+    remediation:
+      summary: Restrict source ranges, or move the workload behind the ingress controller.
+      patch: |
+        spec:
+          type: LoadBalancer
+          loadBalancerSourceRanges:
+            - 203.0.113.0/24
+      effort: low
+      breaking_risk: medium
+    references:
+      cwe: [CWE-284]
+      mitre: [T1133]
+      nist: [SC-7, AC-4]
+      owasp: [K05]
+    tags: [network, exposure]
+
+  - id: TF-NET-008
+    title: Service exposes an administrative or database port
+    severity: critical
+    stride: [I, E, T]
+    confidence: confirmed
+    applies_to: {kind: [Service]}
+    when:
+      all:
+        - {fact: svc.exposes_admin_port, op: non_empty}
+        - {fact: internet_reachable, op: is_true}
+    description: >
+      {{ component }} exposes port(s) {{ svc.exposes_admin_port }} and is reachable from
+      outside the cluster. Database, cache, and management ports (5432, 3306, 6379,
+      9200, 27017, 2375, 10250, 2379...) are routinely scanned; several of these
+      protocols have no authentication enabled by default.
+    evidence:
+      - {fact: svc.exposes_admin_port, text: "exposed admin/data ports: {{ svc.exposes_admin_port }}", expected: "none externally"}
+      - {fact: svc.type, text: "service type = {{ svc.type }}"}
+    remediation:
+      summary: Make the service ClusterIP and reach it through a bastion, VPN, or port-forward.
+      patch: |
+        spec:
+          type: ClusterIP     # not NodePort / LoadBalancer
+      effort: low
+      breaking_risk: medium
+    references:
+      cwe: [CWE-284, CWE-306]
+      mitre: [T1133, T1046]
+      nist: [SC-7, AC-3]
+      owasp: [K05]
+    tags: [network, exposure, critical-path]
+
+  - id: TF-NET-009
+    title: NodePort service exposes the workload on every node
+    severity: medium
+    stride: [S, D]
+    confidence: likely
+    applies_to: {kind: [Service]}
+    when:
+      all:
+        - {fact: svc.type, op: eq, value: NodePort}
+    description: >
+      A NodePort opens the port on every node in the cluster. Whether that is
+      internet-reachable depends entirely on node security groups, which are usually
+      managed by a different team than the manifest -- so this is exposure you cannot
+      verify from the manifest alone.
+    evidence:
+      - {fact: svc.node_ports, text: "nodePorts = {{ svc.node_ports }}"}
+    remediation:
+      summary: Prefer ClusterIP behind an Ingress; if NodePort is required, restrict node security groups.
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-668]
+      mitre: [T1133]
+      nist: [SC-7]
+    tags: [network, exposure]
+
+  - id: TF-NET-010
+    title: NetworkPolicy allows ingress from any source
+    severity: medium
+    stride: [S, T]
+    confidence: confirmed
+    applies_to: {kind: [NetworkPolicy]}
+    when:
+      all:
+        - {fact: tags, op: contains, value: allows_all_ingress}
+    description: >
+      {{ component }} contains an ingress rule with an empty `from` or an ipBlock of
+      0.0.0.0/0. This policy provides the appearance of segmentation without the
+      substance, and it will override a default-deny policy that selects the same pods.
+    evidence:
+      - {fact: name, text: "policy {{ name }} permits all ingress sources", expected: "explicit peers"}
+    remediation:
+      summary: Replace the open rule with explicit namespaceSelector/podSelector peers.
+      effort: low
+      breaking_risk: medium
+    references:
+      cwe: [CWE-1327]
+      mitre: [T1046]
+      cis: ["5.3.2"]
+      nist: [AC-4]
+    tags: [network, segmentation]
+
+  - id: TF-NET-011
+    title: Service selector matches no workload
+    severity: low
+    stride: [D]
+    confidence: confirmed
+    applies_to: {kind: [Service]}
+    when:
+      all:
+        - {fact: tags, op: contains, value: selector_matches_nothing}
+    description: >
+      {{ component }} has a selector that matches no pod template in this repository.
+      Either the service is dead configuration, or the labels drifted -- in which case
+      traffic is black-holed. Dangling services also enable service-name squatting: a
+      pod that adopts the matching labels silently receives the traffic.
+    evidence:
+      - {fact: name, text: "selector matches zero workloads", expected: "at least one"}
+    remediation:
+      summary: Fix the label selector or delete the Service.
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-1188]
+      mitre: [T1557]
+      nist: [CM-6]
+    tags: [hygiene, network]
+
+  - id: TF-NET-012
+    title: Namespace has no Pod Security Admission enforcement
+    severity: medium
+    stride: [E]
+    confidence: confirmed
+    applies_to: {kind: [Namespace]}
+    when:
+      all:
+        - {fact: ns.has_pss, op: is_false}
+    description: >
+      Namespace {{ name }} sets no pod-security.kubernetes.io/enforce label. Nothing
+      prevents someone deploying a privileged, host-mounting pod here tomorrow, which
+      means every workload-level fix in this report can be silently undone.
+    evidence:
+      - {fact: ns.pss_enforce, text: "no enforce label", expected: "restricted or baseline"}
+    remediation:
+      summary: Label the namespace with a Pod Security Standard.
+      patch: |
+        metadata:
+          labels:
+            pod-security.kubernetes.io/enforce: restricted
+            pod-security.kubernetes.io/enforce-version: latest
+            pod-security.kubernetes.io/audit: restricted
+            pod-security.kubernetes.io/warn: restricted
+      effort: low
+      breaking_risk: high
+    references:
+      cwe: [CWE-693]
+      mitre: [T1610]
+      cis: ["5.2.1"]
+      nist: [CM-7, AC-6]
+      owasp: [K01]
+    tags: [governance, admission]

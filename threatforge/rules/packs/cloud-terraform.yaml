@@ -1,0 +1,299 @@
+pack: cloud-terraform
+description: >
+  Cloud resources declared in Terraform. Fidelity depends on input: plan JSON
+  resolves interpolations, raw HCL does not, so several rules are marked
+  `possible` when run against source only.
+
+rules:
+
+  - id: TF-CLOUD-001
+    title: Object storage bucket has a public ACL
+    severity: critical
+    stride: [I]
+    confidence: confirmed
+    applies_to: {provider: [terraform]}
+    when:
+      all:
+        - {fact: tf.public_acl, op: is_true}
+    description: >
+      {{ component }} is configured with a public-read or public-read-write ACL.
+      Public buckets are found by automated scanners within hours. public-read-write is
+      worse than disclosure: anyone can also overwrite objects, which turns the bucket
+      into a malware distribution point under your domain.
+    evidence:
+      - {fact: tf.type, text: "resource {{ tf.type }} with public ACL", expected: private}
+    remediation:
+      summary: Set the ACL to private and enable the account-level public access block.
+      patch: |
+        resource "aws_s3_bucket_public_access_block" "this" {
+          bucket                  = aws_s3_bucket.this.id
+          block_public_acls       = true
+          block_public_policy     = true
+          ignore_public_acls      = true
+          restrict_public_buckets = true
+        }
+      effort: low
+      breaking_risk: medium
+    references:
+      cwe: [CWE-732, CWE-284]
+      mitre: [T1530]
+      nist: [AC-3, SC-28]
+    tags: [cloud, data-exposure, critical-path]
+
+  - id: TF-CLOUD-002
+    title: Database instance is publicly accessible
+    severity: critical
+    stride: [I, E, D]
+    confidence: confirmed
+    applies_to: {provider: [terraform]}
+    when:
+      all:
+        - {fact: tf.publicly_accessible, op: is_true}
+    description: >
+      {{ component }} is assigned a public endpoint. Managed database endpoints are
+      continuously scanned and brute-forced; combined with a weak or reused master
+      password this is a direct route to the full dataset.
+    evidence:
+      - {fact: tf.type, text: "publicly_accessible = true", expected: false}
+    remediation:
+      summary: Place the instance in private subnets and reach it through a bastion or VPN.
+      patch: |
+        publicly_accessible = false
+        # and ensure db_subnet_group_name points at private subnets only
+      effort: medium
+      breaking_risk: high
+    references:
+      cwe: [CWE-284, CWE-668]
+      mitre: [T1190, T1133]
+      nist: [SC-7, AC-3]
+    tags: [cloud, exposure, critical-path]
+
+  - id: TF-CLOUD-003
+    title: Security group allows ingress from 0.0.0.0/0
+    severity: high
+    stride: [S, D, E]
+    confidence: confirmed
+    applies_to: {provider: [terraform]}
+    when:
+      all:
+        - {fact: tf.open_cidr, op: is_true}
+    description: >
+      {{ component }} permits inbound traffic from the entire internet on port(s)
+      {{ tf.open_ports }}. If any of those are 22, 3389, 3306, 5432, or 6379 this is
+      immediately exploitable; even for 443 it removes the option of IP-based
+      containment during an incident.
+    evidence:
+      - {fact: tf.open_ports, text: "open ports = {{ tf.open_ports }} from 0.0.0.0/0", expected: "restricted CIDRs"}
+    remediation:
+      summary: Restrict to known CIDRs, or front the service with a load balancer and WAF.
+      patch: |
+        ingress {
+          from_port   = 443
+          to_port     = 443
+          protocol    = "tcp"
+          cidr_blocks = ["203.0.113.0/24"]
+        }
+      effort: low
+      breaking_risk: medium
+    references:
+      cwe: [CWE-284]
+      mitre: [T1190, T1133]
+      nist: [SC-7, AC-4]
+    tags: [cloud, network]
+
+  - id: TF-CLOUD-004
+    title: Data store has encryption at rest disabled
+    severity: high
+    stride: [I]
+    confidence: confirmed
+    applies_to: {provider: [terraform]}
+    when:
+      all:
+        - {fact: tf.is_data_store, op: is_true}
+        - {fact: tf.encrypted, op: is_false}
+    description: >
+      {{ component }} stores data unencrypted at rest. Snapshot sharing, disk
+      decommissioning, and support access all become disclosure paths, and most
+      compliance regimes treat this as a reportable control failure on its own.
+    evidence:
+      - {fact: tf.encrypted, text: "encryption is explicitly disabled", expected: true}
+    remediation:
+      summary: Enable encryption with a customer-managed KMS key.
+      patch: |
+        storage_encrypted = true
+        kms_key_id        = aws_kms_key.data.arn
+      effort: medium
+      breaking_risk: high
+    references:
+      cwe: [CWE-311]
+      mitre: [T1530]
+      nist: [SC-28]
+    tags: [cloud, encryption]
+
+  - id: TF-CLOUD-005
+    title: Data store encryption status cannot be determined
+    severity: low
+    stride: [I]
+    confidence: possible
+    applies_to: {provider: [terraform]}
+    when:
+      all:
+        - {fact: tf.is_data_store, op: is_true}
+        - {fact: tf.encryption_unknown, op: is_true}
+    description: >
+      No encryption attribute is set on {{ component }}. Some providers default to
+      encrypted and some do not, and raw HCL parsing cannot resolve module defaults --
+      so this needs a human check rather than an assumption.
+    evidence:
+      - {fact: tf.type, text: "no encryption attribute present", expected: "explicit encryption setting"}
+    remediation:
+      summary: Set the encryption attribute explicitly so the intent is reviewable.
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-311]
+      nist: [SC-28, CM-6]
+    tags: [cloud, encryption, verify-manually]
+
+  - id: TF-CLOUD-006
+    title: IAM policy uses wildcard actions or resources
+    severity: high
+    stride: [E]
+    confidence: likely
+    applies_to: {provider: [terraform]}
+    when:
+      all:
+        - {fact: tf.iam_wildcard, op: is_true}
+    description: >
+      {{ component }} contains `"Action": "*"` or `"Resource": "*"`. Any principal
+      assuming this role can act across the whole account, so a single compromised
+      workload becomes an account-level incident.
+    evidence:
+      - {fact: tf.type, text: "wildcard in IAM policy document", expected: "scoped actions and ARNs"}
+    remediation:
+      summary: Scope actions and resource ARNs; use IAM Access Analyzer to generate a least-privilege policy from CloudTrail.
+      effort: high
+      breaking_risk: medium
+    references:
+      cwe: [CWE-732, CWE-269]
+      mitre: [T1098, T1078.004]
+      nist: [AC-6]
+    tags: [cloud, iam]
+
+  - id: TF-CLOUD-007
+    title: Hardcoded credential in Terraform source
+    severity: critical
+    stride: [I, S]
+    confidence: likely
+    applies_to: {provider: [terraform]}
+    when:
+      all:
+        - {fact: tf.possible_hardcoded_secret, op: is_true}
+    description: >
+      {{ component }} has a credential-shaped attribute with a literal value. Terraform
+      source is version-controlled, and any value here is also written in cleartext into
+      the state file, which is frequently stored in a bucket with broader read access
+      than the repository.
+    evidence:
+      - {fact: tf.type, text: "literal credential attribute detected", expected: "var / secret manager reference"}
+    remediation:
+      summary: Rotate the credential, move it to a secret manager, and encrypt remote state.
+      patch: |
+        data "aws_secretsmanager_secret_version" "db" {
+          secret_id = "prod/db/password"
+        }
+        # password = jsondecode(data.aws_secretsmanager_secret_version.db.secret_string)["password"]
+      effort: medium
+      breaking_risk: low
+    references:
+      cwe: [CWE-798]
+      mitre: [T1552.001]
+      nist: [IA-5, SC-28]
+    tags: [cloud, secrets, critical-path]
+
+  - id: TF-CLOUD-008
+    title: No access logging on an internet-facing resource
+    severity: medium
+    stride: [R]
+    confidence: likely
+    applies_to: {provider: [terraform]}
+    when:
+      all:
+        - {fact: tf.is_edge, op: is_true}
+        - {fact: tf.logging_enabled, op: is_false}
+    description: >
+      {{ component }} faces the internet with no access logging configured. Without
+      request logs there is no way to scope an incident after the fact: you cannot tell
+      what was accessed, by whom, or for how long.
+    evidence:
+      - {fact: tf.logging_enabled, text: "no logging/access_logs block", expected: "enabled"}
+    remediation:
+      summary: Enable access logs to a separate, append-only bucket or log group.
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-778]
+      mitre: [T1562.008]
+      nist: [AU-2, AU-12]
+    tags: [cloud, logging, forensics]
+
+  - id: TF-CLOUD-009
+    title: Compute instance permits IMDSv1
+    severity: high
+    stride: [E, I]
+    confidence: confirmed
+    applies_to: {provider: [terraform]}
+    when:
+      all:
+        - {fact: tf.imdsv2_required, op: is_false}
+    description: >
+      {{ component }} allows IMDSv1. An SSRF in any application on the instance reaches
+      169.254.169.254 with a single unauthenticated GET and returns the instance role's
+      temporary credentials. IMDSv2's PUT-token requirement blocks the entire SSRF class.
+    evidence:
+      - {fact: tf.imdsv2_required, text: "http_tokens is not 'required'", expected: required}
+    remediation:
+      summary: Require IMDSv2 and lower the hop limit.
+      patch: |
+        metadata_options {
+          http_tokens                 = "required"
+          http_endpoint               = "enabled"
+          http_put_response_hop_limit = 1
+        }
+      effort: low
+      breaking_risk: medium
+    references:
+      cwe: [CWE-918, CWE-522]
+      mitre: [T1552.005]
+      nist: [SC-7, IA-5]
+    tags: [cloud, ssrf, critical-path]
+
+  - id: TF-CLOUD-010
+    title: Database deletion protection and final snapshot are both disabled
+    severity: medium
+    stride: [D]
+    confidence: confirmed
+    applies_to: {provider: [terraform]}
+    when:
+      all:
+        - {fact: tf.is_data_store, op: is_true}
+        - {fact: tf.deletion_protection, op: is_false}
+        - {fact: tf.skip_final_snapshot, op: is_true}
+    description: >
+      {{ component }} can be destroyed with no snapshot retained. A compromised CI
+      credential, or a plain mistake in a `terraform apply`, results in unrecoverable
+      data loss -- this is the destructive end of the availability spectrum.
+    evidence:
+      - {fact: tf.skip_final_snapshot, text: "skip_final_snapshot = true and deletion_protection = false"}
+    remediation:
+      summary: Enable deletion protection and keep final snapshots.
+      patch: |
+        deletion_protection = true
+        skip_final_snapshot = false
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-1188]
+      mitre: [T1485]
+      nist: [CP-9, CP-10]
+    tags: [cloud, availability]

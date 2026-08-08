@@ -1,0 +1,110 @@
+name: Threat model
+
+on:
+  pull_request:
+    paths:
+      - "**/*.yaml"
+      - "**/*.yml"
+      - "**/*.tf"
+      - "**/Dockerfile*"
+      - ".threatforge.yml"
+      - ".threatforge-baseline.json"
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"        # Monday drift check: catches rule-pack updates too
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write        # required to upload SARIF
+  pull-requests: write          # required to comment on the PR
+
+concurrency:
+  group: threatforge-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  threat-model:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install ThreatForge
+        run: pip install --quiet ".[all]"
+
+      # helm/kustomize are optional: without them charts are parsed
+      # best-effort with template placeholders.
+      - name: Install helm and kustomize
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+          curl -fsSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/ || true
+
+      - name: Scan
+        id: scan
+        run: threatforge scan . --out threatforge-out -f json -f html -f sarif -f markdown
+
+      - name: Upload SARIF to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: threatforge-out/threatforge.sarif
+          category: threatforge
+
+      - name: Publish report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: threat-model-report
+          path: threatforge-out/
+          retention-days: 30
+
+      - name: Security gate
+        id: gate
+        run: threatforge gate . --github-summary
+
+      # Runs even when the gate fails, so the author sees why.
+      - name: Comment on pull request
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const m = JSON.parse(fs.readFileSync('threatforge-out/threat-model.json', 'utf8'));
+            const c = m.summary.by_level;
+            const gateOk = '${{ steps.gate.outcome }}' === 'success';
+            const top = (m.findings || []).filter(f => !f.suppressed).slice(0, 10);
+            const rows = top.map(f => {
+              const s = (f.evidence && f.evidence[0] && f.evidence[0].source) || {};
+              const loc = s.file ? `\`${s.file}${s.line ? ':' + s.line : ''}\`` : '—';
+              return `| ${f.risk_score} | \`${f.rule_id}\` | ${f.title} | \`${f.component}\` | ${loc} |`;
+            }).join('\n');
+            const body = [
+              `### ${gateOk ? '✅' : '❌'} ThreatForge threat model`,
+              '',
+              `| Critical | High | Medium | Low | Assets | Flows | Attack paths |`,
+              `|---|---|---|---|---|---|---|`,
+              `| ${c.critical} | ${c.high} | ${c.medium} | ${c.low} | ${m.summary.assets} | ${m.summary.flows} | ${m.summary.attack_paths} |`,
+              '',
+              top.length ? '<details><summary>Highest-risk findings</summary>\n\n| Risk | Rule | Finding | Component | Location |\n|---|---|---|---|---|\n' + rows + '\n\n</details>' : '_No findings._',
+              '',
+              `Full report: [threat-model-report artifact](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}) · annotations in the Security tab.`,
+            ].join('\n');
+
+            const {data: comments} = await github.rest.issues.listComments({
+              ...context.repo, issue_number: context.issue.number,
+            });
+            const mine = comments.find(c => c.user.type === 'Bot' &&
+                                            c.body.includes('ThreatForge threat model'));
+            if (mine) {
+              await github.rest.issues.updateComment({...context.repo, comment_id: mine.id, body});
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: context.issue.number, body});
+            }

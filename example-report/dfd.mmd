@@ -1,0 +1,98 @@
+flowchart LR
+
+    classDef crit fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fff;
+    classDef high fill:#7c2d12,stroke:#f97316,stroke-width:2px,color:#fff;
+    classDef med  fill:#713f12,stroke:#eab308,stroke-width:1px,color:#fff;
+    classDef low  fill:#1e3a5f,stroke:#3b82f6,stroke-width:1px,color:#fff;
+    classDef ok   fill:#14532d,stroke:#22c55e,stroke-width:1px,color:#fff;
+    classDef ext  fill:#3f3f46,stroke:#a1a1aa,stroke-width:2px,color:#fff;
+    subgraph n0["AWS account (trust 40)"]
+    direction TB
+        n1[("aws_s3_bucket assets")]
+        n2[("aws_db_instance shop")]
+        n3(["aws_security_group web"])
+        n4(["aws_instance worker"])
+        n5(["aws_iam_policy broad"])
+    end
+    subgraph n6["Kubernetes cluster (trust 60)"]
+    direction TB
+        n7(["Namespace shop"])
+        n8(["ClusterRole shop-operator"])
+        n9(["ClusterRoleBinding shop-operator-binding"])
+    end
+    subgraph n10["Internet (trust 0)"]
+    direction TB
+        n11[["ExternalEntity Internet"]]
+        n12[["ExternalEntity Internal user / operator"]]
+    end
+    subgraph n13["namespace/shop (trust 70)"]
+    direction TB
+        n14(["Container shop/web"])
+        n15(["Container shop/sidecar-agent"])
+        n16(["Service shop/storefront"])
+        n17(["Ingress shop/storefront-ingress"])
+        n18[("Secret shop/shop-db")]
+        n19[("ConfigMap shop/shop-config")]
+        n20[("StatefulSet shop/postgres")]
+        n21[("Container shop/postgres")]
+        n22(["Service shop/postgres"])
+        n23[("PersistentVolumeClaim shop/postgres-pvc")]
+        n24(["ServiceAccount shop/postgres-sa"])
+        n25[("HostPath shop//var/run/docker.sock")]
+        n26(["ServiceAccount shop/default"])
+    end
+    subgraph n27["Worker node (host OS) (trust 95)"]
+    direction TB
+        n28(["Deployment shop/storefront"])
+    end
+    subgraph n29["Ungrouped"]
+    direction TB
+        n30(["DockerImage node:latest"])
+        n31(["ComposeService api"])
+        n32(["ComposeService cache"])
+        n33[("ComposeVolume redisdata")]
+    end
+    n28 -->|⚠ runs| n14
+    n28 -->|⚠ runs| n15
+    n20 -->|runs| n21
+    n16 -->|⚠ routes-to / tcp:80| n28
+    n22 -->|routes-to / tcp:5432| n20
+    n17 -->|routes-to / http:80| n16
+    n28 -->|⚠ mounts| n25
+    n20 -->|mounts| n23
+    n21 -->|reads| n18
+    n28 -->|⚠ assumes| n26
+    n20 -->|assumes| n24
+    n24 -->|⚠ granted| n8
+    n11 -->|⚠ external-access / http| n17
+    n11 -->|⚠ external-access / tcp:80| n16
+    n11 -->|⚠ external-access / tcp:5432| n22
+    n11 -->|external-access| n31
+    class n7 low;
+    class n28 crit;
+    class n14 crit;
+    class n15 high;
+    class n16 crit;
+    class n17 crit;
+    class n18 crit;
+    class n19 med;
+    class n20 crit;
+    class n21 crit;
+    class n22 crit;
+    class n23 ok;
+    class n24 ok;
+    class n8 crit;
+    class n9 ok;
+    class n1 high;
+    class n2 high;
+    class n3 med;
+    class n4 high;
+    class n5 ok;
+    class n30 high;
+    class n31 crit;
+    class n32 med;
+    class n33 ok;
+    class n11 ext;
+    class n12 ext;
+    class n25 ok;
+    class n26 med;

@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "threatforge"
+version = "1.0.0"
+description = "Automated, evidence-based threat modelling for infrastructure-as-code"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "Apache-2.0"}
+dependencies = ["PyYAML>=6.0"]
+
+[project.optional-dependencies]
+docx = ["python-docx>=1.1"]
+hcl  = ["python-hcl2>=4.3"]
+all  = ["python-docx>=1.1", "python-hcl2>=4.3"]
+dev  = ["pytest>=7.4", "python-docx>=1.1"]
+
+[project.scripts]
+threatforge = "threatforge.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["threatforge*"]
+
+[tool.setuptools.package-data]
+threatforge = ["rules/packs/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,339 @@
+pack: docker-build
+description: Dockerfile build-time posture and docker-compose runtime topology.
+
+rules:
+
+  - id: TF-DKR-001
+    title: Image runs as root
+    severity: high
+    stride: [E]
+    confidence: confirmed
+    applies_to: {kind: [DockerImage]}
+    when:
+      all:
+        - {fact: df.runs_as_root, op: is_true}
+        - {fact: df.final_stage, op: is_true}
+    description: >
+      The final stage of {{ component }} has no USER instruction, so the image runs as
+      UID 0. Every downstream consumer inherits that default -- an orchestrator has to
+      opt out explicitly, and most manifests never do.
+    evidence:
+      - {fact: df.user, text: "no USER instruction in the final stage", expected: "a non-root UID"}
+    remediation:
+      summary: Create and switch to a non-root user.
+      patch: |
+        RUN addgroup -g 10001 app && adduser -D -u 10001 -G app app
+        USER 10001:10001
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-250]
+      mitre: [T1610]
+      cis: ["4.1"]
+      nist: [AC-6]
+    tags: [build, privilege]
+
+  - id: TF-DKR-002
+    title: Base image uses a mutable tag
+    severity: medium
+    stride: [T]
+    confidence: confirmed
+    applies_to: {kind: [DockerImage]}
+    when:
+      all:
+        - {fact: df.base_is_latest, op: is_true}
+    description: >
+      {{ component }} builds FROM `{{ df.base_image }}`. Two builds of the same commit
+      can produce different images, which breaks reproducibility and makes it impossible
+      to say with confidence what is running in production.
+    evidence:
+      - {fact: df.base_image, text: "FROM {{ df.base_image }}", expected: "image@sha256:..."}
+    remediation:
+      summary: Pin the base image by digest.
+      patch: |
+        FROM alpine:3.20@sha256:0a4eaa0eecf5f8c050e5bba433f58c052be7587ee8af3e8b3910ef9ab5fbe9f5
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-829, CWE-494]
+      mitre: [T1195.002]
+      cis: ["4.2"]
+      nist: [CM-2, SI-7]
+    tags: [build, supply-chain]
+
+  - id: TF-DKR-003
+    title: Secret material in build instructions
+    severity: critical
+    stride: [I]
+    confidence: likely
+    applies_to: {kind: [DockerImage]}
+    when:
+      all:
+        - {fact: df.hardcoded_secret_refs, op: non_empty}
+    description: >
+      {{ component }} embeds credential-shaped values in ENV/ARG/RUN. Docker layers are
+      immutable and independently pullable: deleting the value in a later layer does not
+      remove it, and anyone who can pull the image can extract it with `docker history`
+      or by unpacking the layer tarballs.
+    evidence:
+      - {fact: df.hardcoded_secret_refs, text: "credential-like build instructions detected", expected: "BuildKit secret mounts"}
+    remediation:
+      summary: Rotate the credential and use BuildKit secret mounts.
+      patch: |
+        # syntax=docker/dockerfile:1.7
+        RUN --mount=type=secret,id=npmrc,target=/root/.npmrc \
+            npm ci --omit=dev
+      effort: medium
+      breaking_risk: low
+    references:
+      cwe: [CWE-798, CWE-540]
+      mitre: [T1552.001]
+      cis: ["4.10"]
+      nist: [IA-5]
+    tags: [build, secrets, critical-path]
+
+  - id: TF-DKR-004
+    title: Remote content fetched with ADD
+    severity: medium
+    stride: [T]
+    confidence: confirmed
+    applies_to: {kind: [DockerImage]}
+    when:
+      all:
+        - {fact: df.add_remote, op: non_empty}
+    description: >
+      ADD with a URL downloads and unpacks remote content with no integrity check. If
+      the upstream host is compromised or DNS is hijacked, arbitrary content lands in
+      the image at build time -- a textbook supply chain injection point.
+    evidence:
+      - {fact: df.add_remote, text: "ADD from a remote URL", expected: "curl + checksum verification"}
+    remediation:
+      summary: Download explicitly and verify a checksum or signature.
+      patch: |
+        RUN curl -fsSLO https://example.com/tool.tar.gz \
+         && echo "e3b0c442...  tool.tar.gz" | sha256sum -c - \
+         && tar -xzf tool.tar.gz && rm tool.tar.gz
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-494, CWE-829]
+      mitre: [T1195.002, T1105]
+      cis: ["4.9"]
+      nist: [SI-7]
+    tags: [build, supply-chain]
+
+  - id: TF-DKR-005
+    title: Build pipes remote script directly into a shell
+    severity: high
+    stride: [T, E]
+    confidence: confirmed
+    applies_to: {kind: [DockerImage]}
+    when:
+      all:
+        - {fact: df.pipe_to_shell, op: non_empty}
+    description: >
+      A `curl ... | sh` pattern executes unverified remote code as root during the
+      build. Whoever controls that URL controls the contents of your image, and the
+      compromise leaves no trace in the Dockerfile.
+    evidence:
+      - {fact: df.pipe_to_shell, text: "curl/wget piped to a shell", expected: "download, verify, then execute"}
+    remediation:
+      summary: Download, verify the checksum, inspect, then execute.
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-494]
+      mitre: [T1195.002, T1059]
+      nist: [SI-7, CM-7]
+    tags: [build, supply-chain]
+
+  - id: TF-DKR-006
+    title: Image has no HEALTHCHECK
+    severity: low
+    stride: [D]
+    confidence: confirmed
+    applies_to: {kind: [DockerImage]}
+    when:
+      all:
+        - {fact: df.healthcheck, op: is_false}
+        - {fact: df.final_stage, op: is_true}
+    description: >
+      Without a HEALTHCHECK, a container that has hung but not exited is indistinguishable
+      from a healthy one outside Kubernetes (where probes cover this).
+    evidence:
+      - {fact: df.healthcheck, text: "no HEALTHCHECK instruction", expected: "defined"}
+    remediation:
+      summary: Add a HEALTHCHECK.
+      patch: |
+        HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
+          CMD wget -qO- http://localhost:8080/healthz || exit 1
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-703]
+      cis: ["4.6"]
+      nist: [SI-4]
+    tags: [build, availability, hygiene]
+
+  # -- docker-compose ---------------------------------------------------
+
+  - id: TF-CMP-001
+    title: Compose service runs privileged
+    severity: critical
+    stride: [E, T]
+    confidence: confirmed
+    applies_to: {kind: [ComposeService]}
+    when:
+      all:
+        - {fact: compose.privileged, op: is_true}
+    description: >
+      {{ component }} runs with `privileged: true`, disabling container isolation
+      entirely. Code execution in this service is equivalent to root on the host.
+    evidence:
+      - {fact: compose.privileged, text: "privileged: true", expected: false}
+    remediation:
+      summary: Remove privileged; grant specific cap_add entries instead.
+      patch: |
+        privileged: false
+        cap_drop: ["ALL"]
+        cap_add: ["NET_BIND_SERVICE"]
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-250]
+      mitre: [T1611]
+      nist: [AC-6]
+    tags: [compose, privilege, critical-path]
+
+  - id: TF-CMP-002
+    title: Compose service mounts the Docker socket
+    severity: critical
+    stride: [E, T, I]
+    confidence: confirmed
+    applies_to: {kind: [ComposeService]}
+    when:
+      all:
+        - {fact: compose.docker_socket, op: is_true}
+    description: >
+      {{ component }} mounts /var/run/docker.sock. This grants full control of the Docker
+      daemon, which is root on the host by another name.
+    evidence:
+      - {fact: compose.docker_socket, text: "docker.sock is mounted", expected: "not mounted"}
+    remediation:
+      summary: Use a socket proxy with a minimal API allowlist, or rootless Docker.
+      effort: high
+      breaking_risk: high
+    references:
+      cwe: [CWE-250, CWE-284]
+      mitre: [T1610]
+      nist: [AC-6]
+    tags: [compose, container-escape, critical-path]
+
+  - id: TF-CMP-003
+    title: Compose service publishes a port on all interfaces
+    severity: medium
+    stride: [S, I, D]
+    confidence: likely
+    applies_to: {kind: [ComposeService]}
+    when:
+      all:
+        - {fact: compose.published_ports, op: non_empty}
+        - {fact: tags, op: contains, value: internet_facing_candidate}
+    description: >
+      {{ component }} publishes {{ compose.published_ports }} without binding to a
+      specific host IP, so the port is reachable on every interface -- including the
+      public one on a cloud VM. Docker also writes iptables rules directly, which
+      commonly bypasses host firewall configuration such as ufw.
+    evidence:
+      - {fact: compose.published_ports, text: "ports = {{ compose.published_ports }}", expected: "127.0.0.1:PORT:PORT"}
+    remediation:
+      summary: Bind to localhost and front the service with a reverse proxy.
+      patch: |
+        ports:
+          - "127.0.0.1:8080:8080"
+      effort: low
+      breaking_risk: medium
+    references:
+      cwe: [CWE-668]
+      mitre: [T1133]
+      nist: [SC-7]
+    tags: [compose, network]
+
+  - id: TF-CMP-004
+    title: Compose service has plaintext credentials in environment
+    severity: high
+    stride: [I]
+    confidence: likely
+    applies_to: {kind: [ComposeService]}
+    when:
+      all:
+        - {fact: compose.plaintext_secret_env, op: is_true}
+    description: >
+      Credential-shaped environment variables are set inline in the compose file, which
+      is version-controlled and visible to anyone who can run `docker inspect`.
+    evidence:
+      - {fact: compose.plaintext_secret_env, text: "credential-like env vars with literal values", expected: "env_file or docker secrets"}
+    remediation:
+      summary: Move values to an untracked env_file or to Docker/Swarm secrets.
+      patch: |
+        env_file: [.env]      # add .env to .gitignore
+        # or, in swarm mode:
+        # secrets: [db_password]
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-798]
+      mitre: [T1552.001]
+      nist: [IA-5]
+    tags: [compose, secrets]
+
+  - id: TF-CMP-005
+    title: Compose service has no resource limits
+    severity: low
+    stride: [D]
+    confidence: confirmed
+    applies_to: {kind: [ComposeService]}
+    when:
+      all:
+        - {fact: compose.no_limits, op: is_true}
+    description: >
+      No CPU or memory limit is set, so this container can exhaust the host.
+    evidence:
+      - {fact: compose.no_limits, text: "deploy.resources.limits is unset", expected: "cpu and memory limits"}
+    remediation:
+      summary: Set deploy.resources.limits.
+      patch: |
+        deploy:
+          resources:
+            limits: {cpus: "0.50", memory: 512M}
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-770]
+      mitre: [T1499]
+      nist: [SC-5]
+    tags: [compose, availability]
+
+  - id: TF-CMP-006
+    title: Compose service uses host networking
+    severity: high
+    stride: [S, I]
+    confidence: confirmed
+    applies_to: {kind: [ComposeService]}
+    when:
+      all:
+        - {fact: compose.host_network, op: is_true}
+    description: >
+      network_mode host removes network namespace isolation: the container can bind any
+      host port and sniff all host traffic.
+    evidence:
+      - {fact: compose.host_network, text: "network_mode: host", expected: "bridge or a user-defined network"}
+    remediation:
+      summary: Use a user-defined bridge network and publish only required ports.
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-668]
+      mitre: [T1040]
+      nist: [SC-7]
+    tags: [compose, network]

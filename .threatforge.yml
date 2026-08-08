@@ -1,0 +1,16 @@
+# Configuration for scanning ThreatForge's own test fixtures.
+project: threatforge-self
+ingestors: [kubernetes, terraform, dockerfile, compose]
+
+suppress:
+  paths:
+    - "tests/fixtures/**"     # fixtures are deliberately vulnerable
+
+gate:
+  fail_on: high
+  max_new: 0
+  fail_on_attack_path: true
+
+output:
+  dir: threatforge-out
+  formats: [json, html, sarif, markdown, mermaid]
