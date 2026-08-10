@@ -1,0 +1,305 @@
+# .github/workflows/codeql-full-scan.yml
+name: CodeQL — Full Security Scan
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+  schedule:
+    - cron: '0 4 * * 1'          # Weekly deep scan, Monday 04:00 UTC
+  workflow_dispatch:
+    inputs:
+      query_suite:
+        description: 'Query suite'
+        type: choice
+        options: [security-extended, security-and-quality, default]
+        default: security-extended
+      fail_on:
+        description: 'Fail build at/above severity (critical|high|medium|low|none)'
+        default: 'high'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ────────────────────────────────────────────────────────────────
+  # 1. Detect which languages actually exist in this repo
+  # ────────────────────────────────────────────────────────────────
+  detect:
+    name: Detect languages
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+      empty: ${{ steps.set.outputs.empty }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Map repo languages to CodeQL languages
+        id: set
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "/repos/${{ github.repository }}/languages" > langs.json || echo '{}' > langs.json
+          cat langs.json
+
+          declare -A SEEN
+          add() { SEEN["$1"]=1; }
+
+          for L in $(jq -r 'keys[]' langs.json); do
+            case "$L" in
+              "C"|"C++")                       add "c-cpp" ;;
+              "C#")                            add "csharp" ;;
+              "Go")                            add "go" ;;
+              "Java"|"Kotlin")                 add "java-kotlin" ;;
+              "JavaScript"|"TypeScript"|"Vue") add "javascript-typescript" ;;
+              "Python")                        add "python" ;;
+              "Ruby")                          add "ruby" ;;
+              "Swift")                         add "swift" ;;
+              "Rust")                          add "rust" ;;
+            esac
+          done
+
+          # Always analyze workflow files if any exist
+          if [ -d .github/workflows ]; then add "actions"; fi
+
+          ENTRIES=""
+          for lang in "${!SEEN[@]}"; do
+            case "$lang" in
+              java-kotlin|csharp) MODE="none" ;;   # no build toolchain needed
+              c-cpp|swift|rust)   MODE="autobuild" ;;
+              *)                  MODE="none" ;;
+            esac
+            ENTRIES="${ENTRIES}{\"language\":\"${lang}\",\"build-mode\":\"${MODE}\"},"
+          done
+          ENTRIES="[${ENTRIES%,}]"
+
+          echo "matrix={\"include\":${ENTRIES}}" >> "$GITHUB_OUTPUT"
+          if [ "$ENTRIES" = "[]" ]; then
+            echo "empty=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::No CodeQL-supported languages detected."
+          else
+            echo "empty=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Matrix: $ENTRIES"
+
+  # ────────────────────────────────────────────────────────────────
+  # 2. Analyze each language
+  # ────────────────────────────────────────────────────────────────
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    needs: detect
+    if: needs.detect.outputs.empty == 'false'
+    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.detect.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Toolchains — only fire for the language being analyzed
+      - uses: actions/setup-java@v4
+        if: matrix.language == 'java-kotlin' && matrix.build-mode == 'autobuild'
+        with: { distribution: temurin, java-version: '17' }
+
+      - uses: actions/setup-node@v4
+        if: matrix.language == 'javascript-typescript'
+        with: { node-version: '20' }
+
+      - uses: actions/setup-python@v5
+        if: matrix.language == 'python'
+        with: { python-version: '3.12' }
+
+      - uses: actions/setup-go@v5
+        if: matrix.language == 'go'
+        with: { go-version: 'stable' }
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: ${{ github.event.inputs.query_suite || 'security-extended' }}
+          config: |
+            paths-ignore:
+              - '**/node_modules/**'
+              - '**/vendor/**'
+              - '**/dist/**'
+              - '**/build/**'
+              - '**/*.min.js'
+              - '**/test/**'
+              - '**/tests/**'
+              - '**/__tests__/**'
+            query-filters:
+              - exclude:
+                  tags contain: /^external\/cwe\/cwe-noise$/
+
+      - name: Autobuild
+        if: matrix.build-mode == 'autobuild'
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform analysis
+        id: cq
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:${{ matrix.language }}
+          output: sarif-results
+          upload: always
+          upload-database: true
+
+      - name: Summarize this language
+        if: always()
+        run: |
+          set -uo pipefail
+          F=$(ls sarif-results/*.sarif 2>/dev/null | head -1) || true
+          [ -z "${F:-}" ] && { echo "No SARIF produced."; exit 0; }
+          N=$(jq '[.runs[].results[]] | length' "$F")
+          {
+            echo "### CodeQL — \`${{ matrix.language }}\`: ${N} result(s)"
+            if [ "$N" -gt 0 ]; then
+              echo "| Severity | Rule | File | Line |"
+              echo "|---|---|---|---|"
+              jq -r '
+                (.runs[0].tool.driver.rules // []) as $rules
+                | .runs[].results[:40][]
+                | . as $r
+                | ($rules[$r.rule.index // 0].properties["security-severity"] // "-") as $sev
+                | "| \($sev) | \($r.ruleId) | `\($r.locations[0].physicalLocation.artifactLocation.uri)` | \($r.locations[0].physicalLocation.region.startLine // "-") |"
+              ' "$F"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: codeql-sarif-${{ matrix.language }}
+          path: sarif-results/
+          retention-days: 90
+
+  # ────────────────────────────────────────────────────────────────
+  # 3. Pull consolidated alerts from the Code Scanning API → CSV/JSON
+  # ────────────────────────────────────────────────────────────────
+  report:
+    name: Consolidated report
+    needs: analyze
+    if: always() && needs.analyze.result != 'skipped'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: read
+    steps:
+      - name: Wait for alert ingestion
+        run: sleep 45
+
+      - name: Fetch open code scanning alerts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          gh api --paginate \
+            "/repos/${{ github.repository }}/code-scanning/alerts?state=open&per_page=100&tool_name=CodeQL" \
+            --jq '.[]' | jq -s '.' > out/alerts-raw.json
+          echo "Open alerts: $(jq 'length' out/alerts-raw.json)"
+
+      - name: Normalize → JSON + CSV
+        run: |
+          set -euo pipefail
+          jq '[ .[] | {
+                number:        .number,
+                rule_id:       .rule.id,
+                rule_name:     .rule.name,
+                severity:      (.rule.security_severity_level // .rule.severity // "note"),
+                description:   .rule.description,
+                tags:          ((.rule.tags // []) | join(";")),
+                file:          .most_recent_instance.location.path,
+                start_line:    .most_recent_instance.location.start_line,
+                end_line:      .most_recent_instance.location.end_line,
+                message:       .most_recent_instance.message.text,
+                branch:        .most_recent_instance.ref,
+                state:         .state,
+                created_at:    .created_at,
+                url:           .html_url
+              } ] | sort_by(
+                    (if .severity=="critical" then 0
+                     elif .severity=="high"   then 1
+                     elif .severity=="medium" then 2
+                     elif .severity=="low"    then 3
+                     else 4 end), .file)' \
+            out/alerts-raw.json > out/codeql-alerts.json
+
+          jq -r '["Alert #","Severity","Rule ID","Rule Name","File","Start Line","End Line","CWE Tags","Message","Created","URL"],
+                 (.[] | [ .number, .severity, .rule_id, .rule_name, .file, .start_line,
+                          .end_line, .tags, .message, .created_at, .url ]) | @csv' \
+            out/codeql-alerts.json > out/codeql-alerts.csv
+
+      - name: Build summary
+        run: |
+          set -euo pipefail
+          T=$(jq 'length' out/codeql-alerts.json)
+          C=$(jq '[.[]|select(.severity=="critical")]|length' out/codeql-alerts.json)
+          H=$(jq '[.[]|select(.severity=="high")]|length'     out/codeql-alerts.json)
+          M=$(jq '[.[]|select(.severity=="medium")]|length'   out/codeql-alerts.json)
+          L=$(jq '[.[]|select(.severity=="low")]|length'      out/codeql-alerts.json)
+          {
+            echo "## CodeQL — consolidated (${{ github.repository }})"
+            echo ""
+            echo "| Severity | Count |"
+            echo "|---|---|"
+            echo "| Critical | ${C} |"
+            echo "| High | ${H} |"
+            echo "| Medium | ${M} |"
+            echo "| Low / Note | ${L} |"
+            echo "| **Total open** | **${T}** |"
+            echo ""
+            echo "### Top rules"
+            echo "| Rule | Count | Severity |"
+            echo "|---|---|---|"
+            jq -r 'group_by(.rule_id)|map({r:.[0].rule_id,s:.[0].severity,n:length})
+                   |sort_by(-.n)|.[:15][]|"| \(.r) | \(.n) | \(.s) |"' out/codeql-alerts.json
+            echo ""
+            echo "### Most affected files"
+            echo "| File | Findings |"
+            echo "|---|---|"
+            jq -r 'group_by(.file)|map({f:.[0].file,n:length})
+                   |sort_by(-.n)|.[:15][]|"| `\(.f)` | \(.n) |"' out/codeql-alerts.json
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codeql-consolidated-report
+          path: out/
+          retention-days: 90
+
+      - name: Severity gate
+        run: |
+          set -euo pipefail
+          GATE="${{ github.event.inputs.fail_on || 'high' }}"
+          [ "$GATE" = "none" ] && { echo "Gate disabled."; exit 0; }
+          case "$GATE" in
+            critical) M='["critical"]' ;;
+            high)     M='["critical","high"]' ;;
+            medium)   M='["critical","high","medium"]' ;;
+            low)      M='["critical","high","medium","low"]' ;;
+            *)        M='["critical","high"]' ;;
+          esac
+          N=$(jq --argjson m "$M" '[.[]|select(.severity as $s|$m|index($s))]|length' out/codeql-alerts.json)
+          if [ "$N" -gt 0 ]; then
+            echo "::error::${N} open CodeQL alert(s) at or above '${GATE}'."
+            exit 1
+          fi
+          echo "Gate passed."
