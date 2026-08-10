@@ -1,0 +1,42 @@
+# .github/workflows/sbom-attest.yml
+name: SBOM & Attestation
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+jobs:
+  sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Export dependency-graph SBOM (SPDX)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p sbom
+          gh api "/repos/${{ github.repository }}/dependency-graph/sbom" \
+            > sbom/spdx-sbom.json
+          jq '.sbom.packages | length' sbom/spdx-sbom.json
+
+      - name: Generate CycloneDX SBOM (Syft)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+            | sh -s -- -b /usr/local/bin
+          syft . -o cyclonedx-json=sbom/cyclonedx.json -o table
+
+      - name: Attest SBOM provenance
+        uses: actions/attest-sbom@v2
+        with:
+          subject-path: 'sbom/cyclonedx.json'
+          sbom-path: 'sbom/cyclonedx.json'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom/
+          retention-days: 365
