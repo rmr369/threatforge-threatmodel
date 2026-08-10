@@ -1,0 +1,171 @@
+# .github/workflows/dependabot-org-scan.yml
+name: Dependabot Org-Wide Scan
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'          # Every Monday 02:00 UTC
+  workflow_dispatch:
+    inputs:
+      org:
+        description: 'GitHub org/owner to scan'
+        required: false
+        default: ''
+      severity_gate:
+        description: 'Fail if open alerts at/above this severity exist (critical|high|medium|low|none)'
+        required: false
+        default: 'critical'
+
+permissions:
+  contents: read
+
+env:
+  ORG: ${{ github.event.inputs.org || github.repository_owner }}
+  GATE: ${{ github.event.inputs.severity_gate || 'critical' }}
+  GH_TOKEN: ${{ secrets.DEPENDABOT_SCAN_TOKEN }}   # PAT: read:org, repo, security_events
+
+jobs:
+  scan:
+    name: Collect Dependabot alerts
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Validate token
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::Secret DEPENDABOT_SCAN_TOKEN is not set."
+            exit 1
+          fi
+          gh api /user --jq '.login' > /dev/null
+          echo "Authenticated. Scanning org: $ORG"
+
+      - name: Pull all open Dependabot alerts (org-wide, paginated)
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          gh api --paginate \
+            -H "Accept: application/vnd.github+json" \
+            "/orgs/${ORG}/dependabot/alerts?state=open&per_page=100" \
+            --jq '.[]' | jq -s '.' > out/alerts-raw.json
+          echo "Total open alerts: $(jq 'length' out/alerts-raw.json)"
+
+      - name: Normalize to flat JSON + CSV
+        run: |
+          set -euo pipefail
+          jq '[ .[] | {
+                repository:        .repository.full_name,
+                repo_private:      .repository.private,
+                alert_number:      .number,
+                severity:          .security_advisory.severity,
+                cvss_score:        (.security_advisory.cvss.score // 0),
+                ghsa_id:           .security_advisory.ghsa_id,
+                cve_id:            (.security_advisory.cve_id // "N/A"),
+                summary:           .security_advisory.summary,
+                ecosystem:         .dependency.package.ecosystem,
+                package:           .dependency.package.name,
+                manifest:          (.dependency.manifest_path // "N/A"),
+                scope:             (.dependency.scope // "N/A"),
+                vulnerable_range:  .security_vulnerability.vulnerable_version_range,
+                patched_version:   (.security_vulnerability.first_patched_version.identifier // "NO FIX"),
+                state:             .state,
+                created_at:        .created_at,
+                updated_at:        .updated_at,
+                url:               .html_url
+              } ] | sort_by(
+                    (if .severity=="critical" then 0
+                     elif .severity=="high"   then 1
+                     elif .severity=="medium" then 2
+                     elif .severity=="low"    then 3
+                     else 4 end), .repository, .package)' \
+            out/alerts-raw.json > out/dependabot-alerts.json
+
+          jq -r '
+            ["Repository","Alert #","Severity","CVSS","GHSA","CVE","Ecosystem","Package",
+             "Manifest","Scope","Vulnerable Range","Patched Version","Summary","Created","URL"],
+            (.[] | [ .repository, .alert_number, .severity, .cvss_score, .ghsa_id, .cve_id,
+                     .ecosystem, .package, .manifest, .scope, .vulnerable_range,
+                     .patched_version, .summary, .created_at, .url ])
+            | @csv' out/dependabot-alerts.json > out/dependabot-alerts.csv
+
+      - name: Coverage check — repos with Dependabot alerts disabled
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          gh api --paginate "/orgs/${ORG}/repos?per_page=100&type=all" \
+            --jq '.[] | select(.archived==false) | .full_name' > out/repos.txt
+
+          echo "repository,alerts_enabled" > out/coverage.csv
+          while read -r repo; do
+            if gh api "/repos/${repo}/vulnerability-alerts" --silent 2>/dev/null; then
+              echo "${repo},enabled" >> out/coverage.csv
+            else
+              echo "${repo},DISABLED" >> out/coverage.csv
+            fi
+          done < out/repos.txt
+
+          echo "Repos scanned: $(wc -l < out/repos.txt)"
+          echo "Dependabot disabled on: $(grep -c ',DISABLED' out/coverage.csv || true)"
+
+      - name: Build job summary
+        run: |
+          set -euo pipefail
+          TOTAL=$(jq 'length' out/dependabot-alerts.json)
+          C=$(jq '[.[]|select(.severity=="critical")]|length' out/dependabot-alerts.json)
+          H=$(jq '[.[]|select(.severity=="high")]|length'     out/dependabot-alerts.json)
+          M=$(jq '[.[]|select(.severity=="medium")]|length'   out/dependabot-alerts.json)
+          L=$(jq '[.[]|select(.severity=="low")]|length'      out/dependabot-alerts.json)
+          NOFIX=$(jq '[.[]|select(.patched_version=="NO FIX")]|length' out/dependabot-alerts.json)
+
+          {
+            echo "## Dependabot Scan — \`${ORG}\`"
+            echo ""
+            echo "| Severity | Count |"
+            echo "|---|---|"
+            echo "| Critical | ${C} |"
+            echo "| High | ${H} |"
+            echo "| Medium | ${M} |"
+            echo "| Low | ${L} |"
+            echo "| **Total open** | **${TOTAL}** |"
+            echo ""
+            echo "No fix available: **${NOFIX}**"
+            echo ""
+            echo "### Top 15 repositories by open alerts"
+            echo "| Repository | Alerts |"
+            echo "|---|---|"
+            jq -r 'group_by(.repository)|map({r:.[0].repository,n:length})
+                   |sort_by(-.n)|.[:15][]|"| \(.r) | \(.n) |"' out/dependabot-alerts.json
+            echo ""
+            echo "### Critical & High detail"
+            echo "| Repository | Package | Severity | CVE | Fixed in |"
+            echo "|---|---|---|---|---|"
+            jq -r '[.[]|select(.severity=="critical" or .severity=="high")][:50][]
+                   |"| \(.repository) | \(.ecosystem)/\(.package) | \(.severity) | \(.cve_id) | \(.patched_version) |"' \
+                   out/dependabot-alerts.json
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependabot-scan-${{ env.ORG }}-${{ github.run_id }}
+          path: out/
+          retention-days: 90
+
+      - name: Severity gate
+        if: env.GATE != 'none'
+        run: |
+          set -euo pipefail
+          case "$GATE" in
+            critical) MATCH='["critical"]' ;;
+            high)     MATCH='["critical","high"]' ;;
+            medium)   MATCH='["critical","high","medium"]' ;;
+            low)      MATCH='["critical","high","medium","low"]' ;;
+            *)        MATCH='["critical"]' ;;
+          esac
+          COUNT=$(jq --argjson m "$MATCH" '[.[]|select(.severity as $s | $m|index($s))]|length' \
+                  out/dependabot-alerts.json)
+          if [ "$COUNT" -gt 0 ]; then
+            echo "::error::${COUNT} open alert(s) at or above '${GATE}'."
+            exit 1
+          fi
+          echo "Gate passed."
