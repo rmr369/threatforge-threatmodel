@@ -1,0 +1,336 @@
+# .github/workflows/container-scan.yml
+name: Container Security Scan
+
+on:
+  push:
+    branches: [main, master, develop]
+    paths: ['**Dockerfile*', '**/docker-compose*.y*ml', '.github/workflows/container-scan.yml']
+  pull_request:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+    inputs:
+      image:
+        description: 'Existing image ref to scan (skips build), e.g. nginx:1.27-alpine'
+        default: ''
+      fail_on:
+        description: 'Fail at/above severity (CRITICAL|HIGH|MEDIUM|none)'
+        default: 'CRITICAL'
+      run_cis:
+        description: 'Run Docker CIS compliance report'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Find Dockerfiles / accept an image ref ────────────────────
+  detect:
+    name: Detect build targets
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.d.outputs.matrix }}
+      empty: ${{ steps.d.outputs.empty }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build matrix
+        id: d
+        run: |
+          set -euo pipefail
+          IMG="${{ github.event.inputs.image }}"
+          if [ -n "$IMG" ]; then
+            M="{\"include\":[{\"name\":\"external\",\"dockerfile\":\"\",\"context\":\"\",\"image\":\"${IMG}\"}]}"
+            echo "matrix=$M" >> "$GITHUB_OUTPUT"; echo "empty=false" >> "$GITHUB_OUTPUT"
+            echo "$M"; exit 0
+          fi
+
+          ENTRIES=""
+          while IFS= read -r df; do
+            [ -z "$df" ] && continue
+            CTX=$(dirname "$df")
+            NAME=$(echo "$df" | sed 's|^\./||; s|/|-|g; s|Dockerfile||; s|[^A-Za-z0-9._-]|-|g; s|^-||; s|-$||')
+            [ -z "$NAME" ] && NAME="root"
+            ENTRIES="${ENTRIES}{\"name\":\"${NAME}\",\"dockerfile\":\"${df}\",\"context\":\"${CTX}\",\"image\":\"\"},"
+          done < <(find . -name 'Dockerfile*' -not -path './.git/*' -not -path '*/node_modules/*' | head -10)
+
+          ENTRIES="[${ENTRIES%,}]"
+          if [ "$ENTRIES" = "[]" ]; then
+            echo "empty=true" >> "$GITHUB_OUTPUT"
+            echo "matrix={\"include\":[]}" >> "$GITHUB_OUTPUT"
+            echo "::warning::No Dockerfile found and no image input supplied."
+          else
+            echo "empty=false" >> "$GITHUB_OUTPUT"
+            echo "matrix={\"include\":${ENTRIES}}" >> "$GITHUB_OUTPUT"
+          fi
+          echo "$ENTRIES"
+
+  # ── Dockerfile static analysis ────────────────────────────────
+  dockerfile-lint:
+    name: Hadolint (${{ matrix.name }})
+    needs: detect
+    if: needs.detect.outputs.empty == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.detect.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Hadolint
+        if: matrix.dockerfile != ''
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          mkdir -p reports
+          docker run --rm -i hadolint/hadolint:latest \
+            hadolint --no-fail --format json - < "${{ matrix.dockerfile }}" \
+            > reports/hadolint-${{ matrix.name }}.json || true
+          docker run --rm -i hadolint/hadolint:latest \
+            hadolint --no-fail --format sarif - < "${{ matrix.dockerfile }}" \
+            > reports/hadolint-${{ matrix.name }}.sarif || true
+          docker run --rm -i hadolint/hadolint:latest \
+            hadolint --no-fail - < "${{ matrix.dockerfile }}" || true
+
+      - name: Summarize
+        if: matrix.dockerfile != ''
+        run: |
+          F=reports/hadolint-${{ matrix.name }}.json
+          N=$(jq 'length' "$F" 2>/dev/null || echo 0)
+          {
+            echo "### Hadolint — \`${{ matrix.dockerfile }}\`: ${N} issue(s)"
+            [ "$N" -gt 0 ] && {
+              echo "| Level | Rule | Line | Message |"; echo "|---|---|---|---|"
+              jq -r '.[:30][] | "| \(.level) | \(.code) | \(.line) | \(.message) |"' "$F"
+            } || true
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always() && matrix.dockerfile != '' && hashFiles('reports/*.sarif') != ''
+        continue-on-error: true
+        with:
+          sarif_file: reports/hadolint-${{ matrix.name }}.sarif
+          category: hadolint-${{ matrix.name }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: container-hadolint-${{ matrix.name }}, path: reports/, retention-days: 30 }
+
+  # ── Build + full image scan ───────────────────────────────────
+  image-scan:
+    name: Image scan (${{ matrix.name }})
+    needs: detect
+    if: needs.detect.outputs.empty == 'false'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.detect.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Resolve image
+        id: img
+        run: |
+          set -euo pipefail
+          if [ -n "${{ matrix.image }}" ]; then
+            docker pull "${{ matrix.image }}"
+            echo "ref=${{ matrix.image }}" >> "$GITHUB_OUTPUT"
+          else
+            REF="scan-target:${{ matrix.name }}"
+            docker build -f "${{ matrix.dockerfile }}" -t "$REF" "${{ matrix.context }}"
+            echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          fi
+          docker images | head -5
+
+      - name: Install scanners
+        run: |
+          set -euo pipefail
+          curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh  | sh -s -- -b /usr/local/bin
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          curl -sSLo dockle.tar.gz \
+            "https://github.com/goodwithtech/dockle/releases/download/v0.4.15/dockle_0.4.15_Linux-64bit.tar.gz"
+          tar -xzf dockle.tar.gz && sudo mv dockle /usr/local/bin/
+
+      - name: Trivy — vulns, secrets, misconfig, licenses
+        continue-on-error: true
+        env:
+          REF: ${{ steps.img.outputs.ref }}
+          NAME: ${{ matrix.name }}
+        run: |
+          set -uo pipefail
+          mkdir -p reports
+          trivy image "$REF" \
+            --scanners vuln,secret,misconfig,license \
+            --severity CRITICAL,HIGH,MEDIUM,LOW \
+            --ignore-unfixed=false \
+            --format json --output "reports/trivy-${NAME}.json" --exit-code 0 || true
+
+          trivy image "$REF" --scanners vuln,secret --severity CRITICAL,HIGH,MEDIUM \
+            --format sarif --output "reports/trivy-${NAME}.sarif" --exit-code 0 || true
+
+          trivy image "$REF" --severity CRITICAL,HIGH --format table || true
+
+      - name: Syft SBOM + Grype (second opinion)
+        continue-on-error: true
+        env:
+          REF: ${{ steps.img.outputs.ref }}
+          NAME: ${{ matrix.name }}
+        run: |
+          set -uo pipefail
+          syft "$REF" -o spdx-json="reports/sbom-${NAME}.spdx.json" \
+                      -o cyclonedx-json="reports/sbom-${NAME}.cdx.json" -q || true
+          grype "$REF" -o json --file "reports/grype-${NAME}.json" || true
+          grype "$REF" -o table || true
+
+      - name: Dockle — CIS Docker Benchmark & image hygiene
+        if: ${{ github.event.inputs.run_cis != 'false' }}
+        continue-on-error: true
+        env:
+          REF: ${{ steps.img.outputs.ref }}
+          NAME: ${{ matrix.name }}
+        run: |
+          set -uo pipefail
+          dockle --exit-code 0 --format json --output "reports/dockle-${NAME}.json" "$REF" || true
+          dockle --exit-code 0 "$REF" || true
+
+      - name: Trivy Docker CIS compliance report
+        if: ${{ github.event.inputs.run_cis != 'false' }}
+        continue-on-error: true
+        env:
+          REF: ${{ steps.img.outputs.ref }}
+          NAME: ${{ matrix.name }}
+        run: |
+          trivy image --compliance docker-cis-1.6.0 "$REF" \
+            --format json --output "reports/cis-${NAME}.json" --exit-code 0 || true
+          trivy image --compliance docker-cis-1.6.0 "$REF" --report summary || true
+
+      - name: Image metadata hygiene (user, ports, healthcheck)
+        continue-on-error: true
+        env:
+          REF: ${{ steps.img.outputs.ref }}
+          NAME: ${{ matrix.name }}
+        run: |
+          set -uo pipefail
+          docker inspect "$REF" | jq '{
+            User:         (.[0].Config.User // "root (!)"),
+            ExposedPorts: (.[0].Config.ExposedPorts // {}),
+            Healthcheck:  (.[0].Config.Healthcheck // "none (!)"),
+            Env:          [.[0].Config.Env[]? | select(test("(?i)(pass|secret|token|key)") | not)],
+            Layers:       (.[0].RootFS.Layers | length),
+            SizeMB:       ((.[0].Size / 1048576) | floor)
+          }' > "reports/inspect-${NAME}.json"
+          cat "reports/inspect-${NAME}.json"
+
+      - name: Normalize → CSV
+        env:
+          NAME: ${{ matrix.name }}
+        run: |
+          set -uo pipefail
+          jq -r '["Target","Class","Package","Installed","Fixed","Severity","VulnID","Title"],
+                 (.Results[]? | .Target as $t | .Class as $c | (.Vulnerabilities // [])[] |
+                   [ $t, $c, .PkgName, .InstalledVersion, (.FixedVersion // "NO FIX"),
+                     .Severity, .VulnerabilityID, (.Title // "n/a") ]) | @csv' \
+            "reports/trivy-${NAME}.json" > "reports/trivy-${NAME}.csv" 2>/dev/null \
+            || echo "no results" > "reports/trivy-${NAME}.csv"
+
+      - name: Summarize
+        id: sum
+        env:
+          NAME: ${{ matrix.name }}
+          REF: ${{ steps.img.outputs.ref }}
+        run: |
+          set -uo pipefail
+          F="reports/trivy-${NAME}.json"
+          cnt() { jq --arg s "$1" '[.Results[]?.Vulnerabilities[]?|select(.Severity==$s)]|length' "$F" 2>/dev/null || echo 0; }
+          C=$(cnt CRITICAL); H=$(cnt HIGH); M=$(cnt MEDIUM); L=$(cnt LOW)
+          NOFIX=$(jq '[.Results[]?.Vulnerabilities[]?|select(.FixedVersion==null or .FixedVersion=="")]|length' "$F" 2>/dev/null || echo 0)
+          SEC=$(jq '[.Results[]?.Secrets[]?]|length' "$F" 2>/dev/null || echo 0)
+          PKGS=$(jq '.artifacts|length' "reports/sbom-${NAME}.spdx.json" 2>/dev/null || echo 0)
+          echo "crit=$C" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Image \`${REF}\`"
+            echo ""
+            echo "| Metric | Value |"; echo "|---|---|"
+            echo "| Critical | ${C} |"; echo "| High | ${H} |"
+            echo "| Medium | ${M} |"; echo "| Low | ${L} |"
+            echo "| No fix available | ${NOFIX} |"
+            echo "| Secrets in layers | ${SEC} |"
+            echo "| SBOM components | ${PKGS} |"
+            echo ""
+            echo "### Critical & High"
+            echo "| Severity | Package | Installed | Fixed in | CVE |"; echo "|---|---|---|---|---|"
+            jq -r '[.Results[]?.Vulnerabilities[]?|select(.Severity=="CRITICAL" or .Severity=="HIGH")][:40][]
+                   |"| \(.Severity) | \(.PkgName) | \(.InstalledVersion) | \(.FixedVersion // "NO FIX") | \(.VulnerabilityID) |"' \
+                   "$F" 2>/dev/null || true
+            echo ""
+            echo "### Dockle (CIS / hygiene)"
+            echo "| Level | Code | Detail |"; echo "|---|---|---|"
+            jq -r '.details[]? | select(.level!="PASS" and .level!="IGNORE")
+                   | "| \(.level) | \(.code) | \((.alerts // [])[0] // .title) |"' \
+                   "reports/dockle-${NAME}.json" 2>/dev/null | head -25 || true
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('reports/trivy-*.sarif') != ''
+        continue-on-error: true
+        with:
+          sarif_file: reports/trivy-${{ matrix.name }}.sarif
+          category: trivy-image-${{ matrix.name }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: container-scan-${{ matrix.name }}, path: reports/, retention-days: 90 }
+
+  # ── Gate ──────────────────────────────────────────────────────
+  gate:
+    name: Container Gate
+    needs: [dockerfile-lint, image-scan]
+    if: always() && needs.image-scan.result != 'skipped'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: all }
+
+      - name: Consolidate
+        run: |
+          set -uo pipefail
+          TOTC=0
+          for f in $(find all -name 'trivy-*.json' -not -name '*.sarif'); do
+            N=$(jq '[.Results[]?.Vulnerabilities[]?|select(.Severity=="CRITICAL")]|length' "$f" 2>/dev/null || echo 0)
+            TOTC=$((TOTC + N))
+          done
+          echo "TOTAL_CRITICAL=$TOTC" >> "$GITHUB_ENV"
+          {
+            echo "# Container Scan — total critical across images: ${TOTC}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          cd all && zip -qr ../container-scan-bundle.zip . && cd ..
+
+      - uses: actions/upload-artifact@v4
+        with: { name: CONTAINER-FULL-BUNDLE, path: container-scan-bundle.zip, retention-days: 90 }
+
+      - name: Evaluate
+        run: |
+          set -euo pipefail
+          GATE="${{ github.event.inputs.fail_on || 'CRITICAL' }}"
+          [ "$GATE" = "none" ] && exit 0
+          if [ "${TOTAL_CRITICAL}" -gt 0 ]; then
+            echo "::error::${TOTAL_CRITICAL} critical vulnerabilities in built images."
+            exit 1
+          fi
+          echo "Gate passed."
