@@ -1,0 +1,431 @@
+# .github/workflows/iac-scan.yml
+name: IaC Security Scan
+
+on:
+  push:
+    branches: [main, master, develop]
+    paths:
+      - '**.tf'
+      - '**.tfvars'
+      - '**.yaml'
+      - '**.yml'
+      - '**.json'
+      - '**/Chart.yaml'
+      - '**Dockerfile*'
+  pull_request:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      fail_on:
+        description: 'Fail at/above severity (CRITICAL|HIGH|MEDIUM|none)'
+        default: 'HIGH'
+      scan_path:
+        description: 'Directory to scan'
+        default: '.'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iac-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SCAN_PATH: ${{ github.event.inputs.scan_path || '.' }}
+
+jobs:
+  # ── Detect which IaC frameworks are present ───────────────────
+  detect:
+    name: Detect IaC frameworks
+    runs-on: ubuntu-latest
+    outputs:
+      terraform: ${{ steps.d.outputs.terraform }}
+      kubernetes: ${{ steps.d.outputs.kubernetes }}
+      helm: ${{ steps.d.outputs.helm }}
+      cloudformation: ${{ steps.d.outputs.cloudformation }}
+      dockerfile: ${{ steps.d.outputs.dockerfile }}
+      any: ${{ steps.d.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Probe
+        id: d
+        run: |
+          set -euo pipefail
+          has() { find "$SCAN_PATH" -path ./node_modules -prune -o -name "$1" -print -quit 2>/dev/null | grep -q . && echo true || echo false; }
+
+          TF=$(has '*.tf')
+          HELM=$(has 'Chart.yaml')
+          DF=$(has 'Dockerfile*')
+
+          # Kubernetes: yaml containing apiVersion + kind
+          K8S=false
+          if grep -rlEs '^apiVersion:' --include='*.yaml' --include='*.yml' \
+               --exclude-dir=node_modules --exclude-dir=.github "$SCAN_PATH" 2>/dev/null \
+               | head -1 | grep -q .; then K8S=true; fi
+
+          # CloudFormation: template with AWSTemplateFormatVersion or Resources+Type
+          CFN=false
+          if grep -rlEs 'AWSTemplateFormatVersion|AWS::[A-Za-z]+::' \
+               --include='*.yaml' --include='*.yml' --include='*.json' \
+               --exclude-dir=node_modules "$SCAN_PATH" 2>/dev/null | head -1 | grep -q .; then CFN=true; fi
+
+          ANY=false
+          for v in "$TF" "$HELM" "$DF" "$K8S" "$CFN"; do [ "$v" = "true" ] && ANY=true; done
+
+          {
+            echo "terraform=$TF"; echo "kubernetes=$K8S"; echo "helm=$HELM"
+            echo "cloudformation=$CFN"; echo "dockerfile=$DF"; echo "any=$ANY"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "TF=$TF K8S=$K8S HELM=$HELM CFN=$CFN DOCKERFILE=$DF"
+          [ "$ANY" = "false" ] && echo "::warning::No IaC files detected." || true
+
+  # ── Checkov: broadest framework coverage ──────────────────────
+  checkov:
+    name: Checkov
+    needs: detect
+    if: needs.detect.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    outputs:
+      failed: ${{ steps.sum.outputs.failed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install
+        run: |
+          set -euo pipefail
+          pip install --quiet --upgrade checkov
+          checkov --version
+
+      - name: Scan
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          mkdir -p reports
+          checkov -d "$SCAN_PATH" \
+            --framework terraform terraform_plan kubernetes helm cloudformation \
+                        dockerfile github_actions secrets serverless ansible \
+            --skip-path node_modules --skip-path .git --skip-path vendor \
+            --download-external-modules false \
+            --compact --quiet \
+            --output json --output sarif --output cli \
+            --output-file-path reports/ \
+            --soft-fail || true
+          [ -f reports/results_json.json ]  && mv reports/results_json.json  reports/checkov.json
+          [ -f reports/results_sarif.sarif ] && mv reports/results_sarif.sarif reports/checkov.sarif
+          ls -la reports/
+
+      - name: Normalize → CSV
+        run: |
+          set -uo pipefail
+          jq -r '["Check ID","Severity","Resource","File","Line Range","Guideline","Description"],
+                 (.results.failed_checks[]? |
+                   [ .check_id,
+                     (.severity // "UNKNOWN"),
+                     .resource,
+                     .file_path,
+                     ((.file_line_range // [0,0]) | map(tostring) | join("-")),
+                     (.guideline // "n/a"),
+                     .check_name ]) | @csv' \
+            reports/checkov.json > reports/checkov.csv 2>/dev/null || echo "no results" > reports/checkov.csv
+
+      - name: Summarize
+        id: sum
+        run: |
+          set -uo pipefail
+          F=$(jq '.results.failed_checks | length' reports/checkov.json 2>/dev/null || echo 0)
+          P=$(jq '.results.passed_checks | length' reports/checkov.json 2>/dev/null || echo 0)
+          echo "failed=$F" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Checkov — ${F} failed / ${P} passed"
+            echo ""
+            echo "### Failures by resource type"
+            echo "| Resource | Count |"; echo "|---|---|"
+            jq -r '[.results.failed_checks[]?.resource | split(".")[0]] | group_by(.)
+                   | map({t:.[0], n:length}) | sort_by(-.n) | .[:12][]
+                   | "| \(.t) | \(.n) |"' reports/checkov.json 2>/dev/null || true
+            echo ""
+            echo "### Top failed checks"
+            echo "| Check ID | Description | Count |"; echo "|---|---|---|"
+            jq -r '[.results.failed_checks[]? | {id:.check_id, n:.check_name}] | group_by(.id)
+                   | map({id:.[0].id, n:.[0].n, c:length}) | sort_by(-.c) | .[:20][]
+                   | "| \(.id) | \(.n) | \(.c) |"' reports/checkov.json 2>/dev/null || true
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('reports/checkov.sarif') != ''
+        continue-on-error: true
+        with:
+          sarif_file: reports/checkov.sarif
+          category: checkov
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: iac-checkov, path: reports/, retention-days: 90 }
+
+  # ── Trivy: misconfig + IaC secrets ────────────────────────────
+  trivy-config:
+    name: Trivy (misconfiguration)
+    needs: detect
+    if: needs.detect.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    outputs:
+      critical: ${{ steps.sum.outputs.crit }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install
+        run: |
+          set -euo pipefail
+          curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin
+          trivy --version
+
+      - name: Scan
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          mkdir -p reports
+          trivy config "$SCAN_PATH" \
+            --severity CRITICAL,HIGH,MEDIUM,LOW \
+            --misconfig-scanners terraform,cloudformation,kubernetes,dockerfile,helm,azure-arm \
+            --skip-dirs node_modules,vendor,.git \
+            --format json --output reports/trivy-config.json --exit-code 0 || true
+
+          trivy config "$SCAN_PATH" --severity CRITICAL,HIGH,MEDIUM \
+            --format sarif --output reports/trivy-config.sarif --exit-code 0 || true
+
+          # Secrets embedded in IaC (tfvars, k8s manifests)
+          trivy fs "$SCAN_PATH" --scanners secret \
+            --format json --output reports/trivy-iac-secrets.json --exit-code 0 || true
+
+          trivy config "$SCAN_PATH" --severity CRITICAL,HIGH --format table || true
+
+      - name: Normalize → CSV
+        run: |
+          set -uo pipefail
+          jq -r '["Target","ID","Severity","Title","Resource","Line","Resolution"],
+                 (.Results[]? | .Target as $t | (.Misconfigurations // [])[] |
+                   [ $t, .ID, .Severity, .Title,
+                     (.CauseMetadata.Resource // "n/a"),
+                     (.CauseMetadata.StartLine // 0),
+                     (.Resolution // "n/a") ]) | @csv' \
+            reports/trivy-config.json > reports/trivy-config.csv 2>/dev/null || echo "no results" > reports/trivy-config.csv
+
+      - name: Summarize
+        id: sum
+        run: |
+          set -uo pipefail
+          cnt() { jq --arg s "$1" '[.Results[]?.Misconfigurations[]?|select(.Severity==$s)]|length' \
+                  reports/trivy-config.json 2>/dev/null || echo 0; }
+          C=$(cnt CRITICAL); H=$(cnt HIGH); M=$(cnt MEDIUM); L=$(cnt LOW)
+          SEC=$(jq '[.Results[]?.Secrets[]?]|length' reports/trivy-iac-secrets.json 2>/dev/null || echo 0)
+          echo "crit=$C" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Trivy IaC — C:${C} H:${H} M:${M} L:${L} | secrets in IaC: ${SEC}"
+            echo ""
+            echo "| Severity | ID | Resource | File:Line | Title |"; echo "|---|---|---|---|---|"
+            jq -r '.Results[]? | .Target as $t | (.Misconfigurations // [])[]
+                   | select(.Severity=="CRITICAL" or .Severity=="HIGH")
+                   | "| \(.Severity) | \(.ID) | \(.CauseMetadata.Resource // "-") | `\($t):\(.CauseMetadata.StartLine // 0)` | \(.Title) |"' \
+                   reports/trivy-config.json 2>/dev/null | head -40 || true
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always() && hashFiles('reports/trivy-config.sarif') != ''
+        continue-on-error: true
+        with:
+          sarif_file: reports/trivy-config.sarif
+          category: trivy-iac
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: iac-trivy, path: reports/, retention-days: 90 }
+
+  # ── KICS: strong Terraform/CFN rule set, different engine ──────
+  kics:
+    name: KICS
+    needs: detect
+    if: needs.detect.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          mkdir -p "$PWD/reports"
+          docker run --rm \
+            -v "$PWD:/src:ro" -v "$PWD/reports:/out" \
+            checkmarx/kics:latest scan \
+              -p /src \
+              -o /out \
+              --report-formats json,sarif,html \
+              --exclude-paths "/src/node_modules,/src/.git,/src/vendor" \
+              --no-progress --ignore-on-exit all || true
+          ls -la reports/
+
+      - name: Summarize
+        run: |
+          set -uo pipefail
+          F=reports/results.json
+          {
+            echo "## KICS"
+            if [ -f "$F" ]; then
+              jq -r '"Total queries: \(.queries_total // 0) | Files scanned: \(.files_scanned // 0)"' "$F"
+              echo ""
+              echo "| Severity | Count |"; echo "|---|---|"
+              jq -r '.severity_counters | to_entries[] | "| \(.key) | \(.value) |"' "$F" 2>/dev/null || true
+              echo ""
+              echo "| Severity | Query | File | Line |"; echo "|---|---|---|---|"
+              jq -r '[.queries[]? | select(.severity=="HIGH" or .severity=="CRITICAL")
+                      | .query_name as $q | .severity as $s | .files[]?
+                      | "| \($s) | \($q) | `\(.file_name)` | \(.line) |"][:40][]' "$F" 2>/dev/null || true
+            else
+              echo "No KICS output produced."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: iac-kics, path: reports/, retention-days: 90 }
+
+  # ── Terraform-specific: tflint + fmt/validate ─────────────────
+  terraform-lint:
+    name: Terraform lint
+    needs: detect
+    if: needs.detect.outputs.terraform == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: { terraform_wrapper: false }
+
+      - name: fmt + validate
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          mkdir -p reports
+          terraform fmt -check -recursive -diff > reports/tf-fmt.txt 2>&1 || true
+          for d in $(find . -name '*.tf' -not -path './.git/*' -exec dirname {} \; | sort -u); do
+            echo "== $d" >> reports/tf-validate.txt
+            (cd "$d" && terraform init -backend=false -input=false -no-color >/dev/null 2>&1 \
+              && terraform validate -no-color) >> reports/tf-validate.txt 2>&1 || true
+          done
+          cat reports/tf-validate.txt || true
+
+      - name: tflint
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          curl -sSL https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+          tflint --init >/dev/null 2>&1 || true
+          tflint --recursive --format json > reports/tflint.json 2>reports/tflint.log || true
+          tflint --recursive --format compact || true
+
+      - name: Summarize
+        run: |
+          N=$(jq '.issues | length' reports/tflint.json 2>/dev/null || echo 0)
+          {
+            echo "## Terraform lint — tflint issues: ${N}"
+            jq -r '.issues[:30][] | "- **\(.rule.severity)** `\(.rule.name)` — \(.message) (\(.range.filename):\(.range.start.line))"' \
+              reports/tflint.json 2>/dev/null || true
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: iac-terraform-lint, path: reports/, retention-days: 30 }
+
+  # ── Kubernetes-specific: kube-linter + kubesec ────────────────
+  kubernetes:
+    name: Kubernetes manifests
+    needs: detect
+    if: needs.detect.outputs.kubernetes == 'true' || needs.detect.outputs.helm == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: kube-linter
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          mkdir -p reports
+          curl -sSLo kl.tar.gz \
+            "https://github.com/stackrox/kube-linter/releases/latest/download/kube-linter-linux.tar.gz"
+          tar -xzf kl.tar.gz && sudo mv kube-linter /usr/local/bin/
+          kube-linter lint . --format json > reports/kube-linter.json 2>/dev/null || true
+          kube-linter lint . || true
+
+      - name: kubesec (per manifest)
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          : > reports/kubesec.jsonl
+          grep -rlEs '^kind:\s*(Deployment|StatefulSet|DaemonSet|Pod|Job|CronJob)' \
+            --include='*.yaml' --include='*.yml' --exclude-dir=node_modules . 2>/dev/null \
+          | head -50 | while read -r f; do
+              docker run --rm -i kubesec/kubesec:v2 scan /dev/stdin < "$f" \
+                | jq --arg f "$f" '.[0] + {file:$f}' >> reports/kubesec.jsonl 2>/dev/null || true
+            done
+          wc -l reports/kubesec.jsonl || true
+
+      - name: Summarize
+        run: |
+          set -uo pipefail
+          N=$(jq '[.Reports[]?]|length' reports/kube-linter.json 2>/dev/null || echo 0)
+          {
+            echo "## Kubernetes — kube-linter findings: ${N}"
+            echo "| Check | Object | Message |"; echo "|---|---|---|"
+            jq -r '.Reports[:30][]? | "| \(.Check) | \(.Object.K8sObject.Namespace // "default")/\(.Object.K8sObject.Name) | \(.Diagnostic.Message) |"' \
+              reports/kube-linter.json 2>/dev/null || true
+            echo ""
+            echo "### kubesec scores (negative = risky)"
+            echo "| File | Score |"; echo "|---|---|"
+            jq -rs '.[:25][] | "| `\(.file)` | \(.score) |"' reports/kubesec.jsonl 2>/dev/null || true
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: iac-kubernetes, path: reports/, retention-days: 30 }
+
+  # ── Gate ──────────────────────────────────────────────────────
+  gate:
+    name: IaC Gate
+    needs: [checkov, trivy-config, kics, terraform-lint, kubernetes]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: all }
+
+      - name: Bundle + evaluate
+        run: |
+          set -uo pipefail
+          cd all && zip -qr ../iac-scan-bundle.zip . && cd ..
+          GATE="${{ github.event.inputs.fail_on || 'HIGH' }}"
+          CK="${{ needs.checkov.outputs.failed || 0 }}"
+          TC="${{ needs.trivy-config.outputs.critical || 0 }}"
+          {
+            echo "# IaC Scan Summary"
+            echo "| Scanner | Findings |"; echo "|---|---|"
+            echo "| Checkov (failed checks) | ${CK} |"
+            echo "| Trivy (critical misconfig) | ${TC} |"
+            echo "| KICS | see artifact |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$GATE" != "none" ] && [ "$TC" -gt 0 ]; then
+            echo "::error::${TC} critical IaC misconfiguration(s)."; exit 1
+          fi
+          echo "Gate passed."
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: IAC-FULL-BUNDLE, path: iac-scan-bundle.zip, retention-days: 90 }
