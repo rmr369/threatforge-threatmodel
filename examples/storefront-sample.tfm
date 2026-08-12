@@ -1,0 +1,193 @@
+{
+ "format": "threatforge-model",
+ "version": 1,
+ "generated": "2026-08-12T10:20:59",
+ "project": "Storefront reference architecture",
+ "source": {
+  "label": "sample",
+  "kind": "path",
+  "root": ""
+ },
+ "overlay": "# Sample application architecture, built for ThreatForge.\nmetadata:\n  title: Storefront reference architecture\ncomponents:\n  - id: \"browser\"\n    type: external_entity\n    name: \"Customer browser\"\n    trust_zone: external\n    component_type: \"browser\"\n    attributes:\n      \"authenticates_itself\": false\n      \"entity_type\": \"human\"\n      \"controlled_by_us\": false\n  - id: \"mobile\"\n    type: external_entity\n    name: \"Mobile app\"\n    trust_zone: external\n    component_type: \"mobile_app\"\n    attributes:\n      \"authenticates_itself\": true\n      \"entity_type\": \"device\"\n      \"controlled_by_us\": false\n  - id: \"admin\"\n    type: external_entity\n    name: \"Internal operator\"\n    trust_zone: internal\n    component_type: \"human_actor\"\n    attributes:\n      \"authenticates_itself\": true\n      \"entity_type\": \"human\"\n      \"controlled_by_us\": true\n  - id: \"cdn\"\n    type: process\n    name: \"CDN\"\n    trust_zone: dmz\n    component_type: \"cdn\"\n    attributes:\n      \"accepts_input_from\": \"any_remote\"\n      \"sanitizes_input\": true\n      \"running_as\": \"service_account\"\n      \"logs_security_events\": true\n  - id: \"waf\"\n    type: process\n    name: \"WAF\"\n    trust_zone: dmz\n    component_type: \"waf\"\n    attributes:\n      \"accepts_input_from\": \"any_remote\"\n      \"sanitizes_input\": true\n      \"running_as\": \"service_account\"\n      \"logs_security_events\": true\n  - id: \"gateway\"\n    type: process\n    name: \"API gateway\"\n    trust_zone: dmz\n    component_type: \"api_gateway\"\n    attributes:\n      \"accepts_input_from\": \"any_remote\"\n      \"implements_authn\": true\n      \"implements_authz\": true\n      \"sanitizes_input\": true\n      \"running_as\": \"service_account\"\n      \"logs_security_events\": true\n      \"isolation_level\": \"container\"\n      \"code_type\": \"managed\"\n  - id: \"adminui\"\n    type: process\n    name: \"Admin console\"\n    trust_zone: internal\n    component_type: \"admin_console\"\n    attributes:\n      \"accepts_input_from\": \"any_remote\"\n      \"running_as\": \"administrator\"\n      \"implements_authn\": true\n      \"implements_authz\": false\n      \"sanitizes_input\": true\n      \"logs_security_events\": false\n  - id: \"web\"\n    type: process\n    name: \"Storefront web app\"\n    trust_zone: internal\n    component_type: \"web_server\"\n    attributes:\n      \"accepts_input_from\": \"authenticated_users\"\n      \"sanitizes_input\": true\n      \"sanitizes_output\": true\n      \"running_as\": \"least_privilege\"\n      \"implements_authn\": true\n      \"logs_security_events\": true\n      \"isolation_level\": \"container\"\n      \"code_type\": \"managed\"\n  - id: \"orders\"\n    type: process\n    name: \"Orders API\"\n    trust_zone: internal\n    component_type: \"microservice\"\n    data: [\"pii\"]\n    attributes:\n      \"accepts_input_from\": \"any_remote\"\n      \"sanitizes_input\": false\n      \"implements_authn\": true\n      \"implements_authz\": true\n      \"running_as\": \"service_account\"\n      \"logs_security_events\": true\n      \"handles_secrets\": true\n      \"isolation_level\": \"container\"\n      \"code_type\": \"managed\"\n  - id: \"worker\"\n    type: process\n    name: \"Payments worker\"\n    trust_zone: internal\n    component_type: \"background_worker\"\n    data: [\"pci\"]\n    attributes:\n      \"accepts_input_from\": \"internal_services\"\n      \"sanitizes_input\": true\n      \"running_as\": \"service_account\"\n      \"implements_authn\": true\n      \"implements_authz\": true\n      \"logs_security_events\": true\n      \"handles_secrets\": true\n      \"isolation_level\": \"container\"\n  - id: \"idp\"\n    type: process\n    name: \"Identity provider\"\n    trust_zone: restricted\n    component_type: \"identity_provider\"\n    attributes:\n      \"accepts_input_from\": \"any_remote\"\n      \"implements_authn\": true\n      \"implements_authz\": true\n      \"sanitizes_input\": true\n      \"running_as\": \"service_account\"\n      \"logs_security_events\": false\n      \"isolation_level\": \"vm\"\n  - id: \"postgres\"\n    type: data_store\n    name: \"Orders database\"\n    trust_zone: restricted\n    component_type: \"sql_db\"\n    data: [\"pii\"]\n    attributes:\n      \"store_type\": \"sql\"\n      \"encrypted\": true\n      \"backup\": true\n      \"signed\": false\n      \"stores_credentials\": false\n      \"write_access\": true\n      \"shared\": false\n      \"removable_storage\": false\n      \"stores_log_data\": false\n  - id: \"cache\"\n    type: data_store\n    name: \"Session cache\"\n    trust_zone: internal\n    component_type: \"cache\"\n    data: [\"secret\"]\n    attributes:\n      \"store_type\": \"cache\"\n      \"stores_credentials\": true\n      \"encrypted\": false\n      \"shared\": true\n      \"backup\": false\n      \"write_access\": true\n      \"signed\": false\n      \"removable_storage\": false\n      \"stores_log_data\": false\n  - id: \"receipts\"\n    type: data_store\n    name: \"Receipt archive\"\n    trust_zone: restricted\n    component_type: \"object_storage\"\n    data: [\"pci\"]\n    attributes:\n      \"store_type\": \"blob\"\n      \"encrypted\": true\n      \"backup\": false\n      \"shared\": false\n      \"stores_credentials\": false\n      \"write_access\": true\n      \"signed\": true\n      \"removable_storage\": false\n      \"stores_log_data\": false\n  - id: \"vault\"\n    type: data_store\n    name: \"Secrets manager\"\n    trust_zone: restricted\n    component_type: \"secrets_manager\"\n    data: [\"secret\"]\n    attributes:\n      \"store_type\": \"other\"\n      \"stores_credentials\": true\n      \"encrypted\": true\n      \"backup\": true\n      \"shared\": false\n      \"signed\": true\n      \"write_access\": true\n      \"removable_storage\": false\n      \"stores_log_data\": false\n  - id: \"stripe\"\n    type: external_entity\n    name: \"Payment provider\"\n    trust_zone: partner\n    component_type: \"payment_provider\"\n    data: [\"pci\"]\n    attributes:\n      \"authenticates_itself\": true\n      \"entity_type\": \"service\"\n      \"controlled_by_us\": false\nflows:\n  - from: \"browser\"\n    to: \"cdn\"\n    name: \"page request\"\n    protocol: \"https\"\n    encrypted: true\n    attributes:\n      \"provides_confidentiality\": true\n      \"provides_integrity\": true\n      \"physical_network\": \"internet\"\n      \"contains_cookies\": true\n      \"forgery_protection\": \"samesite\"\n      \"payload_format\": \"form\"\n      \"source_authenticated\": false\n      \"destination_authenticated\": true\n      \"rate_limited\": true\n  - from: \"mobile\"\n    to: \"gateway\"\n    name: \"api call\"\n    protocol: \"https\"\n    encrypted: true\n    attributes:\n      \"provides_confidentiality\": true\n      \"provides_integrity\": true\n      \"physical_network\": \"cellular\"\n      \"payload_format\": \"json\"\n      \"source_authenticated\": true\n      \"destination_authenticated\": true\n      \"rate_limited\": true\n      \"contains_cookies\": false\n  - from: \"admin\"\n    to: \"adminui\"\n    name: \"administration\"\n    protocol: \"https\"\n    encrypted: true\n    attributes:\n      \"provides_confidentiality\": true\n      \"provides_integrity\": true\n      \"physical_network\": \"vpn\"\n      \"source_authenticated\": true\n      \"destination_authenticated\": true\n      \"contains_cookies\": true\n      \"forgery_protection\": \"none\"\n      \"payload_format\": \"form\"\n  - from: \"cdn\"\n    to: \"waf\"\n    name: \"origin fetch\"\n    protocol: \"https\"\n    encrypted: true\n    attributes:\n      \"provides_confidentiality\": true\n      \"provides_integrity\": true\n      \"physical_network\": \"wire\"\n  - from: \"waf\"\n    to: \"gateway\"\n    name: \"filtered traffic\"\n    protocol: \"https\"\n    encrypted: true\n    attributes:\n      \"provides_confidentiality\": true\n      \"provides_integrity\": true\n      \"physical_network\": \"wire\"\n  - from: \"gateway\"\n    to: \"web\"\n    name: \"route\"\n    protocol: \"https\"\n    encrypted: true\n    attributes:\n      \"provides_confidentiality\": true\n      \"provides_integrity\": true\n      \"source_authenticated\": true\n      \"destination_authenticated\": true\n      \"physical_network\": \"wire\"\n  - from: \"gateway\"\n    to: \"orders\"\n    name: \"order api\"\n    protocol: \"https\"\n    encrypted: true\n    attributes:\n      \"provides_confidentiality\": true\n      \"provides_integrity\": true\n      \"source_authenticated\": true\n      \"destination_authenticated\": true\n      \"payload_format\": \"json\"\n      \"rate_limited\": true\n  - from: \"web\"\n    to: \"idp\"\n    name: \"authenticate\"\n    protocol: \"https\"\n    encrypted: true\n    attributes:\n      \"provides_confidentiality\": true\n      \"provides_integrity\": true\n      \"source_authenticated\": true\n      \"destination_authenticated\": true\n  - from: \"orders\"\n    to: \"postgres\"\n    name: \"read and write orders\"\n    protocol: \"tls\"\n    encrypted: true\n    attributes:\n      \"provides_confidentiality\": true\n      \"provides_integrity\": true\n      \"source_authenticated\": true\n      \"destination_authenticated\": true\n  - from: \"orders\"\n    to: \"cache\"\n    name: \"session lookup\"\n    protocol: \"redis\"\n    encrypted: false\n    attributes:\n      \"provides_confidentiality\": false\n      \"provides_integrity\": false\n      \"physical_network\": \"wire\"\n      \"source_authenticated\": false\n      \"destination_authenticated\": false\n  - from: \"orders\"\n    to: \"vault\"\n    name: \"fetch credentials\"\n    protocol: \"https\"\n    encrypted: true\n    attributes:\n      \"provides_confidentiality\": true\n      \"provides_integrity\": true\n      \"source_authenticated\": true\n      \"destination_authenticated\": true\n  - from: \"orders\"\n    to: \"worker\"\n    name: \"queue payment\"\n    protocol: \"amqp\"\n    encrypted: true\n    attributes:\n      \"provides_confidentiality\": true\n      \"provides_integrity\": true\n      \"source_authenticated\": true\n      \"destination_authenticated\": true\n  - from: \"worker\"\n    to: \"stripe\"\n    name: \"charge card\"\n    protocol: \"https\"\n    encrypted: true\n    attributes:\n      \"provides_confidentiality\": true\n      \"provides_integrity\": true\n      \"physical_network\": \"internet\"\n      \"source_authenticated\": true\n      \"destination_authenticated\": true\n      \"payload_format\": \"json\"\n  - from: \"worker\"\n    to: \"receipts\"\n    name: \"store receipt\"\n    protocol: \"https\"\n    encrypted: true\n    attributes:\n      \"provides_confidentiality\": true\n      \"provides_integrity\": true\n      \"source_authenticated\": true\n      \"destination_authenticated\": true\n  - from: \"adminui\"\n    to: \"postgres\"\n    name: \"operator queries\"\n    protocol: \"tls\"\n    encrypted: true\n    attributes:\n      \"provides_confidentiality\": true\n      \"provides_integrity\": true\n      \"source_authenticated\": true\n      \"destination_authenticated\": true\ntrust_boundaries:\n  - id: \"internet\"\n    name: \"Internet\"\n    trust_level: 0\n    contains: [\"manual:browser\", \"manual:mobile\"]\n  - id: \"dmz\"\n    name: \"DMZ\"\n    trust_level: 30\n    contains: [\"manual:cdn\", \"manual:waf\", \"manual:gateway\", \"manual:adminui\"]\n  - id: \"app-tier\"\n    name: \"Application tier\"\n    trust_level: 70\n    contains: [\"manual:web\", \"manual:orders\", \"manual:worker\", \"manual:idp\"]\n  - id: \"data-tier\"\n    name: \"Data tier\"\n    trust_level: 85\n    contains: [\"manual:postgres\", \"manual:cache\", \"manual:receipts\", \"manual:vault\"]\n  - id: \"partner\"\n    name: \"Partner zone\"\n    trust_level: 40\n    contains: [\"manual:stripe\"]\n",
+ "layout": {
+  "nodes": {
+   "manual:browser": {
+    "x": 60,
+    "y": 120,
+    "w": 170,
+    "h": 60
+   },
+   "manual:mobile": {
+    "x": 60,
+    "y": 260,
+    "w": 170,
+    "h": 60
+   },
+   "manual:admin": {
+    "x": 60,
+    "y": 400,
+    "w": 170,
+    "h": 60
+   },
+   "manual:cdn": {
+    "x": 340,
+    "y": 60,
+    "w": 170,
+    "h": 60
+   },
+   "manual:waf": {
+    "x": 340,
+    "y": 190,
+    "w": 170,
+    "h": 60
+   },
+   "manual:gateway": {
+    "x": 340,
+    "y": 320,
+    "w": 170,
+    "h": 60
+   },
+   "manual:adminui": {
+    "x": 340,
+    "y": 450,
+    "w": 170,
+    "h": 60
+   },
+   "manual:web": {
+    "x": 660,
+    "y": 60,
+    "w": 170,
+    "h": 60
+   },
+   "manual:orders": {
+    "x": 660,
+    "y": 190,
+    "w": 170,
+    "h": 60
+   },
+   "manual:worker": {
+    "x": 660,
+    "y": 320,
+    "w": 170,
+    "h": 60
+   },
+   "manual:idp": {
+    "x": 660,
+    "y": 450,
+    "w": 170,
+    "h": 60
+   },
+   "manual:postgres": {
+    "x": 1000,
+    "y": 60,
+    "w": 170,
+    "h": 60
+   },
+   "manual:cache": {
+    "x": 1000,
+    "y": 190,
+    "w": 170,
+    "h": 60
+   },
+   "manual:receipts": {
+    "x": 1000,
+    "y": 320,
+    "w": 170,
+    "h": 60
+   },
+   "manual:vault": {
+    "x": 1000,
+    "y": 450,
+    "w": 170,
+    "h": 60
+   },
+   "manual:stripe": {
+    "x": 1000,
+    "y": 580,
+    "w": 170,
+    "h": 60
+   },
+   "ext:internet": {
+    "x": -190,
+    "y": 120,
+    "w": 170,
+    "h": 60
+   },
+   "ext:internal-user": {
+    "x": -190,
+    "y": 400,
+    "w": 170,
+    "h": 60
+   }
+  },
+  "bounds": {
+   "boundary:manual:internet": {
+    "x": 30,
+    "y": 78,
+    "w": 230,
+    "h": 272,
+    "name": "Internet",
+    "trust_level": 0,
+    "hand": true
+   },
+   "boundary:manual:dmz": {
+    "x": 310,
+    "y": 18,
+    "w": 230,
+    "h": 522,
+    "name": "DMZ",
+    "trust_level": 30,
+    "hand": true
+   },
+   "boundary:manual:app-tier": {
+    "x": 630,
+    "y": 18,
+    "w": 230,
+    "h": 522,
+    "name": "Application tier",
+    "trust_level": 70,
+    "hand": true
+   },
+   "boundary:manual:data-tier": {
+    "x": 970,
+    "y": 18,
+    "w": 230,
+    "h": 522,
+    "name": "Data tier",
+    "trust_level": 85,
+    "hand": true
+   },
+   "boundary:manual:partner": {
+    "x": 970,
+    "y": 538,
+    "w": 230,
+    "h": 132,
+    "name": "Partner zone",
+    "trust_level": 40,
+    "hand": true
+   }
+  }
+ },
+ "document": {
+  "fields": {
+   "title": "Storefront reference architecture",
+   "owner": "Platform Security",
+   "reviewer": "R Rajamohan Reddy",
+   "stakeholders": "Payments\nStorefront engineering\nPlatform SRE",
+   "scope": "Customer-facing storefront, order capture, and card payment hand-off to the payment provider.",
+   "out_of_scope": "Warehouse and fulfilment systems; the corporate network; anything behind the payment provider's own boundary.",
+   "assumptions": "TLS terminates at the CDN and is re-established to the origin\nCard numbers never touch our servers; only the provider token does\nThe operator VPN is the only route to the admin console",
+   "dependencies": "Payment provider (card authorisation)\nManaged Postgres and object storage",
+   "data_classification": "PII and PCI tokens",
+   "compliance": "PCI-DSS SAQ-A EP, UK GDPR"
+  },
+  "answers": {
+   "authn": "OIDC at the gateway; the identity provider issues short-lived tokens. Service-to-service uses mTLS inside the application tier.",
+   "transit": "TLS on every hop except Orders API to the session cache, which is plaintext on the internal network. Known, not accepted.",
+   "rest": "Postgres and the receipt archive are encrypted with managed keys. The session cache is not.",
+   "input": "Validated at the gateway and in the storefront. The Orders API does not validate what it receives."
+  }
+ },
+ "triage": [],
+ "summary": {}
+}

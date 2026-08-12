@@ -8,7 +8,15 @@ version = "1.0.0"
 description = "Automated, evidence-based threat modelling for infrastructure-as-code"
 readme = "README.md"
 requires-python = ">=3.9"
-license = {text = "Apache-2.0"}
+license = {text = "MPL-2.0"}
+classifiers = [
+    "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Topic :: Security",
+    "Programming Language :: Python :: 3",
+]
 dependencies = ["PyYAML>=6.0"]
 
 [project.optional-dependencies]
@@ -28,3 +36,6 @@ threatforge = ["rules/packs/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# tests/js holds a JavaScript spec run through node, and possibly a local
+# node_modules for jsdom. Collection has no business walking either.
+norecursedirs = ["node_modules", "tests/js", ".git", ".threatforge", "build", "dist"]

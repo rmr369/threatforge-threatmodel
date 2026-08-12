@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """
 Configuration loading (.threatforge.yml) and baseline handling.
 
@@ -19,7 +23,8 @@ BASELINE_NAME = ".threatforge-baseline.json"
 
 DEFAULTS: Dict[str, Any] = {
     "project": None,                       # defaults to the directory name
-    "ingestors": ["kubernetes", "terraform", "dockerfile", "compose"],
+    "ingestors": ["kubernetes", "terraform", "dockerfile", "compose",
+                  "manual", "tmt", "drawio"],
     "rules": {
         "packs": [],                       # empty = all built-in packs
         "extra_paths": [],                 # additional rule directories
@@ -38,6 +43,19 @@ DEFAULTS: Dict[str, Any] = {
         "paths": ["**/test/**", "**/tests/**", "**/examples/**", "**/*.test.yaml"],
         "below_severity": None,            # info | low | medium | high
     },
+    "sla": {
+        # Days from FIRST SEEN to remediation. The clock starts when the finding
+        # first appeared, not when somebody noticed it.
+        "windows": {"critical": 7, "high": 30, "medium": 90, "low": 180,
+                    "info": None},
+        "business_days": False,
+        "grace_days": 0,
+    },
+    "serve": {
+        "port": 8787,
+        "database": None,                  # default: <root>/.threatforge/threatforge.db
+        "open_browser": True,
+    },
     "gate": {
         "fail_on": "high",                 # critical | high | medium | low | none
         "max_new": 0,                      # allowed new findings vs baseline
@@ -45,7 +63,7 @@ DEFAULTS: Dict[str, Any] = {
     },
     "output": {
         "dir": "threatforge-out",
-        "formats": ["json", "html", "sarif", "markdown", "mermaid"],
+        "formats": ["json", "html", "sarif", "markdown", "mermaid", "thf"],
         "max_findings_in_doc": 60,
     },
     "helm": {"render": True},
@@ -86,6 +104,9 @@ def ingestor_config(cfg: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         "terraform": {},
         "dockerfile": {},
         "compose": {},
+        "manual": cfg.get("manual", {}),
+        "tmt": cfg.get("tmt", {}),
+        "drawio": cfg.get("drawio", {}),
         "live": cfg.get("live", {}),
         "legacy": cfg.get("legacy", {}),
     }
@@ -157,7 +178,7 @@ SAMPLE = """\
 project: my-platform
 
 # Which sources to parse.
-ingestors: [kubernetes, terraform, dockerfile, compose]
+ingestors: [kubernetes, terraform, dockerfile, compose, manual, tmt, drawio]
 
 rules:
   # packs: []                 # empty = all built-in packs
@@ -181,14 +202,29 @@ suppress:
   components: []
   # below_severity: low       # hide anything scored below this
 
+sla:
+  # Days from FIRST SEEN to remediation. The clock does not start when you
+  # notice the finding -- it starts when the finding first appeared.
+  windows: {critical: 7, high: 30, medium: 90, low: 180}
+  business_days: false
+  grace_days: 0
+
+serve:
+  port: 8787
+  open_browser: true
+  # database: .threatforge/threatforge.db
+
 gate:
   fail_on: high               # critical | high | medium | low | none
+                              # 'none' disables the gate entirely,
+                              # including the attack-path check
   max_new: 0                  # new findings allowed vs the baseline
   fail_on_attack_path: true
 
 output:
   dir: threatforge-out
-  formats: [json, html, sarif, markdown, mermaid]   # add 'docx' if python-docx is installed
+  formats: [json, html, sarif, markdown, mermaid, thf]
+  # also available: tmt (Microsoft TMT), drawio, docx
 
 helm: {render: true}
 kustomize: {render: true}

@@ -1,0 +1,65 @@
+# Hand-authored additions to whatever the scanner discovers.
+#
+# Static analysis cannot see third-party SaaS, on-prem systems reached over a
+# VPN, or the humans with console access -- yet those are often the highest-value
+# nodes in the graph. Declaring them here makes them participate in reachability,
+# blast radius, and attack path analysis exactly like a scanned asset.
+
+metadata:
+  title: Externals and operators
+  description: Systems and actors outside the repository.
+
+components:
+  - id: payment-provider
+    type: external_entity
+    name: Stripe (payment provider)
+    trust_zone: external
+    description: Third-party card processing. We send order totals and receive tokens.
+    data: [pci, payment]
+
+  - id: crm-saas
+    type: data_store
+    name: Salesforce CRM
+    trust_zone: partner
+    description: Holds the full customer record. Synced nightly.
+    data: [pii, customer]
+
+  - id: ops-engineer
+    type: external_entity
+    name: On-call engineer
+    trust_zone: dmz
+    description: Human with kubectl exec rights in production.
+
+  # Annotate an asset the scanner already found rather than duplicating it.
+  - attach_to: k8s:StatefulSet:shop/postgres
+    tags: [crown-jewel, gdpr-in-scope]
+    data: [pii]
+
+flows:
+  - from: k8s:Deployment:shop/storefront
+    to: payment-provider
+    name: Card authorisation
+    protocol: HTTPS/TLS-1.3
+    authenticated: true
+    data: [pci]
+
+  - from: k8s:StatefulSet:shop/postgres
+    to: crm-saas
+    name: Nightly customer sync
+    protocol: http
+    authenticated: false
+    data: [pii]
+
+  - from: ops-engineer
+    to: k8s:Deployment:shop/storefront
+    name: kubectl exec
+    kind: calls
+    protocol: https
+    authenticated: true
+
+trust_boundaries:
+  - id: third-party
+    name: Third-party processors
+    zone: partner
+    description: Outside our control. Contractual controls only; no technical enforcement.
+    contains: [payment-provider, crm-saas]

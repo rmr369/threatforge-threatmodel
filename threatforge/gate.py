@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """
 CI security gate.
 
@@ -24,7 +28,12 @@ def evaluate(model: ThreatModel, gate_cfg: Dict[str, Any],
              baseline: Optional[Dict[str, Any]] = None) -> Tuple[bool, Dict[str, Any]]:
     fail_on = str(gate_cfg.get("fail_on", "high")).lower()
     max_new = int(gate_cfg.get("max_new", 0))
-    fail_paths = bool(gate_cfg.get("fail_on_attack_path", True))
+    gate_disabled = fail_on in ("none", "off", "")
+
+    # `fail_on: none` turns the gate off entirely. Failing on an attack path
+    # after the user explicitly asked for no gate is the kind of surprise that
+    # gets a tool removed from a pipeline.
+    fail_paths = bool(gate_cfg.get("fail_on_attack_path", True)) and not gate_disabled
 
     # Baseline-accepted findings stay visible to the gate so the ratchet can tell
     # "known and accepted" apart from "fixed".
@@ -33,7 +42,7 @@ def evaluate(model: ThreatModel, gate_cfg: Dict[str, Any],
 
     # -- threshold ---------------------------------------------------------
     breaching: List = []
-    if fail_on not in ("none", "off", ""):
+    if not gate_disabled:
         threshold = ORDER.index(fail_on)
         breaching = [f for f in findings if ORDER.index(f.risk_level.value) >= threshold]
 

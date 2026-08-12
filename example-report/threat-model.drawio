@@ -1,0 +1,303 @@
+<mxfile host="ThreatForge" type="device">
+  <diagram id="threatforge" name="demo — generated DFD">
+    <mxGraphModel dx="1440" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <object id="boundary:namespace:shop" label="namespace/shop  (trust 70)" tfType="boundary" tfTrustLevel="70">
+          <mxCell style="rounded=1;arcSize=6;dashed=1;dashPattern=8 8;html=1;fillColor=none;strokeColor=#9673a6;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=10;spacingTop=4;fontStyle=2;fontColor=#6c3483;container=1;collapsible=0;" vertex="1" parent="1">
+            <mxGeometry x="306" y="34" width="2308" height="1350" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="boundary:cluster:default" label="Kubernetes cluster  (trust 60)" tfType="boundary" tfTrustLevel="60">
+          <mxCell style="rounded=1;arcSize=6;dashed=1;dashPattern=8 8;html=1;fillColor=none;strokeColor=#9673a6;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=10;spacingTop=4;fontStyle=2;fontColor=#6c3483;container=1;collapsible=0;" vertex="1" parent="1">
+            <mxGeometry x="306" y="34" width="2308" height="1350" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="boundary:manual:third-party" label="Third-party processors  (trust 40)" tfType="boundary" tfTrustLevel="40">
+          <mxCell style="rounded=1;arcSize=6;dashed=1;dashPattern=8 8;html=1;fillColor=none;strokeColor=#9673a6;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=10;spacingTop=4;fontStyle=2;fontColor=#6c3483;container=1;collapsible=0;" vertex="1" parent="1">
+            <mxGeometry x="46" y="34" width="1008" height="450" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="boundary:cloud:aws" label="AWS account  (trust 40)" tfType="boundary" tfTrustLevel="40">
+          <mxCell style="rounded=1;arcSize=6;dashed=1;dashPattern=8 8;html=1;fillColor=none;strokeColor=#9673a6;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=10;spacingTop=4;fontStyle=2;fontColor=#6c3483;container=1;collapsible=0;" vertex="1" parent="1">
+            <mxGeometry x="2386" y="484" width="228" height="750" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="boundary:tmt:33333333-0000-0000-0000-000000000001" label="Corporate DMZ  (trust 30)" tfType="boundary" tfTrustLevel="30">
+          <mxCell style="rounded=1;arcSize=6;dashed=1;dashPattern=8 8;html=1;fillColor=none;strokeColor=#9673a6;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=10;spacingTop=4;fontStyle=2;fontColor=#6c3483;container=1;collapsible=0;" vertex="1" parent="1">
+            <mxGeometry x="306" y="334" width="488" height="450" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="boundary:drawio:dmz" label="Corporate DMZ  (trust 30)" tfType="boundary" tfTrustLevel="30">
+          <mxCell style="rounded=1;arcSize=6;dashed=1;dashPattern=8 8;html=1;fillColor=none;strokeColor=#9673a6;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=10;spacingTop=4;fontStyle=2;fontColor=#6c3483;container=1;collapsible=0;" vertex="1" parent="1">
+            <mxGeometry x="306" y="484" width="748" height="450" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="boundary:internet" label="Internet  (trust 0)" tfType="boundary" tfTrustLevel="0">
+          <mxCell style="rounded=1;arcSize=6;dashed=1;dashPattern=8 8;html=1;fillColor=none;strokeColor=#9673a6;strokeWidth=2;verticalAlign=top;align=left;spacingLeft=10;spacingTop=4;fontStyle=2;fontColor=#6c3483;container=1;collapsible=0;" vertex="1" parent="1">
+            <mxGeometry x="46" y="34" width="2568" height="640" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="k8s:Namespace:default_shop" label="shop&#10;(2 findings)" tfType="process" tfId="k8s:Namespace:default/shop" tfBlastRadius="0" tfFindings="2">
+          <mxCell style="ellipse;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:cluster:default">
+            <mxGeometry x="2114" y="46" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="k8s:Deployment:shop_storefront" label="storefront&#10;(8 findings)" tfType="process" tfId="k8s:Deployment:shop/storefront" tfExposure="2" tfBlastRadius="5" tfFindings="8">
+          <mxCell style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:namespace:shop">
+            <mxGeometry x="294" y="46" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="k8s:Service:shop_storefront" label="storefront&#10;(1 finding)" tfType="process" tfId="k8s:Service:shop/storefront" tfExposure="1" tfBlastRadius="6" tfFindings="1">
+          <mxCell style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:namespace:shop">
+            <mxGeometry x="34" y="46" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="k8s:Ingress:shop_storefront-ingress" label="storefront-ingress&#10;(3 findings)" tfType="process" tfId="k8s:Ingress:shop/storefront-ingress" tfExposure="1" tfBlastRadius="7" tfFindings="3">
+          <mxCell style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:namespace:shop">
+            <mxGeometry x="34" y="196" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="k8s:Secret:shop_shop-db" label="shop-db&#10;(2 findings)" tfType="data_store" tfId="k8s:Secret:shop/shop-db" tfExposure="4" tfBlastRadius="0" tfFindings="2">
+          <mxCell style="shape=datastore;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:namespace:shop">
+            <mxGeometry x="814" y="46" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="k8s:ConfigMap:shop_shop-config" label="shop-config&#10;(1 finding)" tfType="data_store" tfId="k8s:ConfigMap:shop/shop-config" tfBlastRadius="0" tfFindings="1">
+          <mxCell style="shape=datastore;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:namespace:shop">
+            <mxGeometry x="2114" y="196" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="k8s:StatefulSet:shop_postgres" label="postgres&#10;(5 findings)" tfType="data_store" tfId="k8s:StatefulSet:shop/postgres" tfExposure="2" tfBlastRadius="6" tfFindings="5">
+          <mxCell style="shape=datastore;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:namespace:shop">
+            <mxGeometry x="294" y="196" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="k8s:Service:shop_postgres" label="postgres&#10;(2 findings)" tfType="process" tfId="k8s:Service:shop/postgres" tfExposure="1" tfBlastRadius="7" tfFindings="2">
+          <mxCell style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:namespace:shop">
+            <mxGeometry x="34" y="346" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="k8s:PersistentVolumeClaim:shop_postgres-pvc" label="postgres-pvc" tfType="data_store" tfId="k8s:PersistentVolumeClaim:shop/postgres-pvc" tfExposure="3" tfBlastRadius="6" tfFindings="0">
+          <mxCell style="shape=datastore;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:namespace:shop">
+            <mxGeometry x="554" y="46" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="k8s:ServiceAccount:shop_postgres-sa" label="postgres-sa" tfType="process" tfId="k8s:ServiceAccount:shop/postgres-sa" tfExposure="3" tfBlastRadius="6" tfFindings="0">
+          <mxCell style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:namespace:shop">
+            <mxGeometry x="554" y="196" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="k8s:ClusterRole:default_shop-operator" label="shop-operator&#10;(2 findings)" tfType="process" tfId="k8s:ClusterRole:default/shop-operator" tfExposure="4" tfBlastRadius="0" tfFindings="2">
+          <mxCell style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:cluster:default">
+            <mxGeometry x="814" y="196" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="k8s:ClusterRoleBinding:default_shop-operator-binding" label="shop-operator-binding" tfType="process" tfId="k8s:ClusterRoleBinding:default/shop-operator-binding" tfBlastRadius="0" tfFindings="0">
+          <mxCell style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:cluster:default">
+            <mxGeometry x="2114" y="346" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="tf:aws_s3_bucket.assets" label="assets&#10;(2 findings)" tfType="data_store" tfId="tf:aws_s3_bucket.assets" tfBlastRadius="0" tfFindings="2">
+          <mxCell style="shape=datastore;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:cloud:aws">
+            <mxGeometry x="34" y="46" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="tf:aws_db_instance.shop" label="shop&#10;(4 findings)" tfType="data_store" tfId="tf:aws_db_instance.shop" tfBlastRadius="0" tfFindings="4">
+          <mxCell style="shape=datastore;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:cloud:aws">
+            <mxGeometry x="34" y="196" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="tf:aws_security_group.web" label="web&#10;(1 finding)" tfType="process" tfId="tf:aws_security_group.web" tfBlastRadius="0" tfFindings="1">
+          <mxCell style="ellipse;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:cloud:aws">
+            <mxGeometry x="34" y="346" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="tf:aws_instance.worker" label="worker&#10;(2 findings)" tfType="process" tfId="tf:aws_instance.worker" tfBlastRadius="0" tfFindings="2">
+          <mxCell style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:cloud:aws">
+            <mxGeometry x="34" y="496" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="tf:aws_iam_policy.broad" label="broad" tfType="process" tfId="tf:aws_iam_policy.broad" tfBlastRadius="0" tfFindings="0">
+          <mxCell style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:cloud:aws">
+            <mxGeometry x="34" y="646" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="docker:image:Dockerfile_node:latest" label="node:latest&#10;(6 findings)" tfType="process" tfId="docker:image:Dockerfile#node:latest" tfBlastRadius="0" tfFindings="6">
+          <mxCell style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+            <mxGeometry x="2420" y="1280" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="compose:service:api" label="api&#10;(5 findings)" tfType="process" tfId="compose:service:api" tfExposure="1" tfBlastRadius="0" tfFindings="5">
+          <mxCell style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+            <mxGeometry x="340" y="530" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="compose:service:cache" label="cache&#10;(2 findings)" tfType="process" tfId="compose:service:cache" tfBlastRadius="0" tfFindings="2">
+          <mxCell style="ellipse;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+            <mxGeometry x="2420" y="120" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="compose:volume:redisdata" label="redisdata" tfType="data_store" tfId="compose:volume:redisdata" tfBlastRadius="0" tfFindings="0">
+          <mxCell style="shape=datastore;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;fontSize=11;" vertex="1" parent="1">
+            <mxGeometry x="2420" y="270" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="manual:payment-provider" label="Stripe (payment provider)" tfType="external_entity" tfId="manual:payment-provider" tfExposure="0" tfBlastRadius="0" tfFindings="0">
+          <mxCell style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:manual:third-party">
+            <mxGeometry x="34" y="46" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="manual:crm-saas" label="Salesforce CRM" tfType="data_store" tfId="manual:crm-saas" tfExposure="3" tfBlastRadius="0" tfFindings="0">
+          <mxCell style="shape=datastore;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:manual:third-party">
+            <mxGeometry x="814" y="346" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="manual:ops-engineer" label="On-call engineer" tfType="external_entity" tfId="manual:ops-engineer" tfBlastRadius="6" tfFindings="0">
+          <mxCell style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:internet">
+            <mxGeometry x="2374" y="386" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="tmt:22222222-0000-0000-0000-000000000001" label="Customer Browser" tfType="external_entity" tfId="tmt:22222222-0000-0000-0000-000000000001" tfExposure="0" tfBlastRadius="2" tfFindings="0">
+          <mxCell style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:internet">
+            <mxGeometry x="34" y="196" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="tmt:22222222-0000-0000-0000-000000000002" label="Billing API" tfType="process" tfId="tmt:22222222-0000-0000-0000-000000000002" tfExposure="1" tfBlastRadius="1" tfFindings="0">
+          <mxCell style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:tmt:33333333-0000-0000-0000-000000000001">
+            <mxGeometry x="34" y="346" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="tmt:22222222-0000-0000-0000-000000000003" label="Customer Billing Database" tfType="data_store" tfId="tmt:22222222-0000-0000-0000-000000000003" tfExposure="2" tfBlastRadius="0" tfFindings="0">
+          <mxCell style="shape=datastore;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:tmt:33333333-0000-0000-0000-000000000001">
+            <mxGeometry x="294" y="46" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="drawio:cust" label="Customer" tfType="external_entity" tfId="drawio:cust" tfExposure="0" tfBlastRadius="3" tfFindings="0">
+          <mxCell style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:internet">
+            <mxGeometry x="34" y="346" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="drawio:api" label="Checkout API" tfType="process" tfId="drawio:api" tfExposure="1" tfBlastRadius="2" tfFindings="0">
+          <mxCell style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:drawio:dmz">
+            <mxGeometry x="34" y="346" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="drawio:ledger" label="Ledger service" tfType="process" tfId="drawio:ledger" tfExposure="2" tfBlastRadius="1" tfFindings="0">
+          <mxCell style="ellipse;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:drawio:dmz">
+            <mxGeometry x="294" y="46" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="drawio:db" label="Card Vault" tfType="data_store" tfId="drawio:db" tfExposure="3" tfBlastRadius="0" tfFindings="0">
+          <mxCell style="shape=datastore;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:drawio:dmz">
+            <mxGeometry x="554" y="46" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="ext:internet" label="Internet" tfType="external_entity" tfId="ext:internet" tfExposure="0" tfBlastRadius="17" tfFindings="0">
+          <mxCell style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:internet">
+            <mxGeometry x="34" y="496" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="ext:internal-user" label="Internal user / operator" tfType="external_entity" tfId="ext:internal-user" tfBlastRadius="0" tfFindings="0">
+          <mxCell style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:internet">
+            <mxGeometry x="2374" y="536" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="k8s:HostPath:shop__var_run_docker.sock" label="/var/run/docker.sock" tfType="data_store" tfId="k8s:HostPath:shop//var/run/docker.sock" tfExposure="3" tfBlastRadius="5" tfFindings="0">
+          <mxCell style="shape=datastore;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:namespace:shop">
+            <mxGeometry x="554" y="646" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="k8s:ServiceAccount:shop_default" label="default&#10;(1 finding)" tfType="process" tfId="k8s:ServiceAccount:shop/default" tfExposure="3" tfBlastRadius="5" tfFindings="1">
+          <mxCell style="ellipse;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:namespace:shop">
+            <mxGeometry x="554" y="796" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="k8s:Container:shop_storefront_web" label="web&#10;(8 findings)" tfType="process" tfId="k8s:Container:shop/storefront/web" tfExposure="3" tfBlastRadius="5" tfFindings="8">
+          <mxCell style="ellipse;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:namespace:shop">
+            <mxGeometry x="554" y="946" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="k8s:Container:shop_storefront_sidecar-agent" label="sidecar-agent&#10;(7 findings)" tfType="process" tfId="k8s:Container:shop/storefront/sidecar-agent" tfExposure="3" tfBlastRadius="5" tfFindings="7">
+          <mxCell style="ellipse;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:namespace:shop">
+            <mxGeometry x="554" y="1096" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <object id="k8s:Container:shop_postgres_postgres" label="postgres&#10;(7 findings)" tfType="data_store" tfId="k8s:Container:shop/postgres/postgres" tfExposure="3" tfBlastRadius="6" tfFindings="7">
+          <mxCell style="shape=datastore;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;verticalAlign=middle;fontSize=11;" vertex="1" parent="boundary:namespace:shop">
+            <mxGeometry x="554" y="1246" width="160" height="70" as="geometry" />
+          </mxCell>
+        </object>
+        <mxCell id="e0" value="Card authorisation (HTTPS/TLS-1.3)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;dashed=0;endArrow=blockThin;endFill=1;fontSize=10;" edge="1" parent="1" source="k8s:Deployment:shop_storefront" target="manual:payment-provider">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" value="Nightly customer sync (http)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#b85450;dashed=0;endArrow=blockThin;endFill=1;fontSize=10;" edge="1" parent="1" source="k8s:StatefulSet:shop_postgres" target="manual:crm-saas">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" value="kubectl exec (https)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;dashed=0;endArrow=blockThin;endFill=1;fontSize=10;" edge="1" parent="1" source="manual:ops-engineer" target="k8s:Deployment:shop_storefront">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="Checkout request (https)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;dashed=0;endArrow=blockThin;endFill=1;fontSize=10;" edge="1" parent="1" source="tmt:22222222-0000-0000-0000-000000000001" target="tmt:22222222-0000-0000-0000-000000000002">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" value="Billing query (sql)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;dashed=0;endArrow=blockThin;endFill=1;fontSize=10;" edge="1" parent="1" source="tmt:22222222-0000-0000-0000-000000000002" target="tmt:22222222-0000-0000-0000-000000000003">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" value="checkout (https) (https)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;dashed=0;endArrow=blockThin;endFill=1;fontSize=10;" edge="1" parent="1" source="drawio:cust" target="drawio:api">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" value="post ledger entry (http) (http)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#b85450;dashed=0;endArrow=blockThin;endFill=1;fontSize=10;" edge="1" parent="1" source="drawio:api" target="drawio:ledger">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" value="read card token (sql) (sql)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;dashed=0;endArrow=blockThin;endFill=1;fontSize=10;" edge="1" parent="1" source="drawio:ledger" target="drawio:db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e11" value="routes to (tcp:80)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#b85450;dashed=0;endArrow=blockThin;endFill=1;fontSize=10;" edge="1" parent="1" source="k8s:Service:shop_storefront" target="k8s:Deployment:shop_storefront">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" value="routes to (tcp:5432)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#b85450;dashed=0;endArrow=blockThin;endFill=1;fontSize=10;" edge="1" parent="1" source="k8s:Service:shop_postgres" target="k8s:StatefulSet:shop_postgres">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e13" value="routes to (http:80)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#b85450;dashed=0;endArrow=blockThin;endFill=1;fontSize=10;" edge="1" parent="1" source="k8s:Ingress:shop_storefront-ingress" target="k8s:Service:shop_storefront">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e14" value="mounts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;dashed=0;endArrow=blockThin;endFill=1;fontSize=10;" edge="1" parent="1" source="k8s:Deployment:shop_storefront" target="k8s:HostPath:shop__var_run_docker.sock">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e15" value="mounts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;dashed=0;endArrow=blockThin;endFill=1;fontSize=10;" edge="1" parent="1" source="k8s:StatefulSet:shop_postgres" target="k8s:PersistentVolumeClaim:shop_postgres-pvc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e16" value="reads" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;dashed=0;endArrow=blockThin;endFill=1;fontSize=10;" edge="1" parent="1" source="k8s:Container:shop_postgres_postgres" target="k8s:Secret:shop_shop-db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e17" value="assumes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;dashed=0;endArrow=blockThin;endFill=1;fontSize=10;" edge="1" parent="1" source="k8s:Deployment:shop_storefront" target="k8s:ServiceAccount:shop_default">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e18" value="assumes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;dashed=0;endArrow=blockThin;endFill=1;fontSize=10;" edge="1" parent="1" source="k8s:StatefulSet:shop_postgres" target="k8s:ServiceAccount:shop_postgres-sa">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e19" value="granted" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;dashed=0;endArrow=blockThin;endFill=1;fontSize=10;" edge="1" parent="1" source="k8s:ServiceAccount:shop_postgres-sa" target="k8s:ClusterRole:default_shop-operator">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e20" value="external access (http)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#b85450;dashed=0;endArrow=blockThin;endFill=1;fontSize=10;" edge="1" parent="1" source="ext:internet" target="k8s:Ingress:shop_storefront-ingress">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e21" value="external access (tcp:80)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#b85450;dashed=0;endArrow=blockThin;endFill=1;fontSize=10;" edge="1" parent="1" source="ext:internet" target="k8s:Service:shop_storefront">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e22" value="external access (tcp:5432)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;dashed=0;endArrow=blockThin;endFill=1;fontSize=10;" edge="1" parent="1" source="ext:internet" target="k8s:Service:shop_postgres">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e23" value="external access" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#666666;dashed=0;endArrow=blockThin;endFill=1;fontSize=10;" edge="1" parent="1" source="ext:internet" target="compose:service:api">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <object id="legend" label="Generated by ThreatForge on 2026-08-11 · 38 elements · 17 critical, 22 high · colour = highest risk on the component · red edge = unencrypted · dashed edge = inferred" tfType="annotation">
+          <mxCell style="text;html=1;align=left;verticalAlign=top;fontSize=10;fontColor=#666666;" vertex="1" parent="1">
+            <mxGeometry x="80" y="20" width="1200" height="30" as="geometry" />
+          </mxCell>
+        </object>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

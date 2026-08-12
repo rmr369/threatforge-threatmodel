@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ThreatModel xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.datacontract.org/2004/07/ThreatModeling.Model">
+  <DrawingSurfaceList>
+    <DrawingSurfaceModel z:Id="i1" xmlns:z="http://schemas.microsoft.com/2003/10/Serialization/">
+      <GenericTypeId>DRAWINGSURFACE</GenericTypeId>
+      <Guid>11111111-1111-1111-1111-111111111111</Guid>
+      <Borders>
+        <KeyValueOfguidanyType>
+          <Key>22222222-0000-0000-0000-000000000001</Key>
+          <Value>
+            <GenericTypeId>GE.EI</GenericTypeId>
+            <Guid>22222222-0000-0000-0000-000000000001</Guid>
+            <Properties>
+              <anyType><DisplayName>Name</DisplayName><Value>Customer Browser</Value></anyType>
+              <anyType><DisplayName>Out Of Scope</DisplayName><Value>false</Value></anyType>
+            </Properties>
+            <TypeId>SE.EI.BU</TypeId>
+            <Height>100</Height><Left>40</Left><Top>120</Top><Width>100</Width>
+          </Value>
+        </KeyValueOfguidanyType>
+        <KeyValueOfguidanyType>
+          <Key>22222222-0000-0000-0000-000000000002</Key>
+          <Value>
+            <GenericTypeId>GE.P</GenericTypeId>
+            <Guid>22222222-0000-0000-0000-000000000002</Guid>
+            <Properties>
+              <anyType><DisplayName>Name</DisplayName><Value>Billing API</Value></anyType>
+            </Properties>
+            <TypeId>SE.P.TWS</TypeId>
+            <Height>100</Height><Left>340</Left><Top>120</Top><Width>100</Width>
+          </Value>
+        </KeyValueOfguidanyType>
+        <KeyValueOfguidanyType>
+          <Key>22222222-0000-0000-0000-000000000003</Key>
+          <Value>
+            <GenericTypeId>GE.DS</GenericTypeId>
+            <Guid>22222222-0000-0000-0000-000000000003</Guid>
+            <Properties>
+              <anyType><DisplayName>Name</DisplayName><Value>Customer Billing Database</Value></anyType>
+            </Properties>
+            <TypeId>SE.DS.SQL</TypeId>
+            <Height>100</Height><Left>640</Left><Top>120</Top><Width>100</Width>
+          </Value>
+        </KeyValueOfguidanyType>
+        <KeyValueOfguidanyType>
+          <Key>22222222-0000-0000-0000-000000000009</Key>
+          <Value>
+            <GenericTypeId>GE.P</GenericTypeId>
+            <Guid>22222222-0000-0000-0000-000000000009</Guid>
+            <Properties>
+              <anyType><DisplayName>Name</DisplayName><Value>Decommissioned Service</Value></anyType>
+              <anyType><DisplayName>Out Of Scope</DisplayName><Value>true</Value></anyType>
+            </Properties>
+            <TypeId>SE.P.TW</TypeId>
+            <Height>100</Height><Left>940</Left><Top>120</Top><Width>100</Width>
+          </Value>
+        </KeyValueOfguidanyType>
+        <KeyValueOfguidanyType>
+          <Key>33333333-0000-0000-0000-000000000001</Key>
+          <Value>
+            <GenericTypeId>GE.TB.B</GenericTypeId>
+            <Guid>33333333-0000-0000-0000-000000000001</Guid>
+            <Properties>
+              <anyType><DisplayName>Name</DisplayName><Value>Corporate DMZ</Value></anyType>
+            </Properties>
+            <TypeId>SE.TB.B</TypeId>
+            <Height>400</Height><Left>300</Left><Top>20</Top><Width>500</Width>
+          </Value>
+        </KeyValueOfguidanyType>
+      </Borders>
+      <Lines>
+        <KeyValueOfguidanyType>
+          <Key>44444444-0000-0000-0000-000000000001</Key>
+          <Value>
+            <GenericTypeId>GE.DF</GenericTypeId>
+            <Guid>44444444-0000-0000-0000-000000000001</Guid>
+            <Properties><anyType><DisplayName>Name</DisplayName><Value>Checkout request</Value></anyType></Properties>
+            <TypeId>SE.DF.HTTPS</TypeId>
+            <SourceGuid>22222222-0000-0000-0000-000000000001</SourceGuid>
+            <TargetGuid>22222222-0000-0000-0000-000000000002</TargetGuid>
+          </Value>
+        </KeyValueOfguidanyType>
+        <KeyValueOfguidanyType>
+          <Key>44444444-0000-0000-0000-000000000002</Key>
+          <Value>
+            <GenericTypeId>GE.DF</GenericTypeId>
+            <Guid>44444444-0000-0000-0000-000000000002</Guid>
+            <Properties><anyType><DisplayName>Name</DisplayName><Value>Billing query</Value></anyType></Properties>
+            <TypeId>SE.DF.SQL</TypeId>
+            <SourceGuid>22222222-0000-0000-0000-000000000002</SourceGuid>
+            <TargetGuid>22222222-0000-0000-0000-000000000003</TargetGuid>
+          </Value>
+        </KeyValueOfguidanyType>
+        <KeyValueOfguidanyType>
+          <Key>44444444-0000-0000-0000-000000000003</Key>
+          <Value>
+            <GenericTypeId>GE.DF</GenericTypeId>
+            <Guid>44444444-0000-0000-0000-000000000003</Guid>
+            <Properties><anyType><DisplayName>Name</DisplayName><Value>To excluded shape</Value></anyType></Properties>
+            <TypeId>SE.DF.HTTP</TypeId>
+            <SourceGuid>22222222-0000-0000-0000-000000000002</SourceGuid>
+            <TargetGuid>22222222-0000-0000-0000-000000000009</TargetGuid>
+          </Value>
+        </KeyValueOfguidanyType>
+      </Lines>
+    </DrawingSurfaceModel>
+  </DrawingSurfaceList>
+  <ThreatInstances>
+    <KeyValueOfstringThreatInstance>
+      <Key>T-0002-0003</Key>
+      <Value>
+        <FlowGuid>44444444-0000-0000-0000-000000000002</FlowGuid>
+        <Id>1</Id>
+        <Priority>High</Priority>
+        <Properties>
+          <KeyValueOfstringstring><Key>Title</Key><Value>SQL injection against Billing Database</Value></KeyValueOfstringstring>
+          <KeyValueOfstringstring><Key>UserThreatCategory</Key><Value>Tampering</Value></KeyValueOfstringstring>
+          <KeyValueOfstringstring><Key>UserThreatDescription</Key><Value>Unvalidated input reaches the billing query.</Value></KeyValueOfstringstring>
+          <KeyValueOfstringstring><Key>Priority</Key><Value>High</Value></KeyValueOfstringstring>
+        </Properties>
+        <SourceGuid>22222222-0000-0000-0000-000000000002</SourceGuid>
+        <State>Mitigated</State>
+        <StateInformation>Parameterized queries and least-privilege credentials.</StateInformation>
+        <TargetGuid>22222222-0000-0000-0000-000000000003</TargetGuid>
+        <TypeId>T7</TypeId>
+      </Value>
+    </KeyValueOfstringThreatInstance>
+  </ThreatInstances>
+  <Version>4.3</Version>
+</ThreatModel>

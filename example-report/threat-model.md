@@ -1,16 +1,16 @@
-# Threat model — vulnerable
+# Threat model — demo
 
-*Generated 2026-08-08 by ThreatForge. Evidence-based STRIDE analysis of infrastructure-as-code.*
+*Generated 2026-08-10 by ThreatForge. Evidence-based STRIDE analysis of infrastructure-as-code.*
 
 ## Executive summary
 
-This analysis modelled 28 assets and 16 data flows across 5 trust boundaries, and produced 73 evidence-backed findings. 17 are critical and 22 are high risk after adjusting for exposure and compensating controls. 16 assets are reachable from an untrusted network and 7 hold sensitive data. 6 complete attack paths were found; the highest-scoring one reaches Secret shop/shop-db in 4 hops.
+This analysis modelled 38 assets and 24 data flows across 8 trust boundaries, and produced 75 evidence-backed findings. 17 are critical and 22 are high risk after adjusting for exposure and compensating controls. 25 assets are reachable from an untrusted network and 10 hold sensitive data. 9 complete attack paths were found; the highest-scoring one reaches Secret shop/shop-db in 4 hops.
 
 | Risk level | Findings |
 |---|---|
 | Critical | 17 |
 | High | 22 |
-| Medium | 22 |
+| Medium | 24 |
 | Low | 12 |
 
 ### Control coverage
@@ -32,10 +32,10 @@ Across 2 workloads:
 
 ## Scope
 
-- **Assets modelled:** 28
-- **Data flows:** 16
-- **Trust boundaries:** 5
-- **Sources parsed:** kubernetes (1 files), terraform (1 files), dockerfile (1 files), compose (1 files)
+- **Assets modelled:** 38
+- **Data flows:** 24
+- **Trust boundaries:** 8
+- **Sources parsed:** kubernetes (2 files), terraform (1 files), dockerfile (1 files), compose (1 files), manual (1 files), tmt (1 files), drawio (1 files)
 
 **Out of scope for this analysis:** application source code, image contents and CVEs, runtime behaviour, admission or mesh policy applied outside the scanned sources, and any resource created out-of-band. Absence of a finding here is not evidence that a risk does not exist.
 
@@ -43,7 +43,10 @@ Across 2 workloads:
 
 | Boundary | Kind | Trust | Assets | Notes |
 |---|---|---|---|---|
-| Internet | internet | 0 | 2 | Anonymous, unauthenticated, fully untrusted network. |
+| Internet | internet | 0 | 6 | Anonymous, unauthenticated, fully untrusted network. |
+| Corporate DMZ | tmt-box | 30 | 2 | Trust boundary imported from a Microsoft TMT model (Corporate DMZ). |
+| Corporate DMZ | drawio | 30 | 3 | Trust boundary from architecture.drawio (Payments architecture). |
+| Third-party processors | manual | 40 | 2 | Outside our control. Contractual controls only; no technical enforcement. |
 | AWS account | cloud-account | 40 | 5 | Managed aws resources. Trust is enforced by IAM, not by network position. |
 | Kubernetes cluster | cluster | 60 | 17 | Everything inside the cluster network and API server. |
 | namespace/shop | namespace | 70 | 14 | Application namespace. |
@@ -74,67 +77,94 @@ flowchart LR
         n8(["ClusterRole shop-operator"])
         n9(["ClusterRoleBinding shop-operator-binding"])
     end
-    subgraph n10["Internet (trust 0)"]
+    subgraph n10["Corporate DMZ (trust 30)"]
     direction TB
-        n11[["ExternalEntity Internet"]]
-        n12[["ExternalEntity Internal user / operator"]]
+        n11(["Process Checkout API"])
+        n12(["Process Ledger service"])
+        n13[("DataStore Card Vault")]
     end
-    subgraph n13["namespace/shop (trust 70)"]
+    subgraph n14["Internet (trust 0)"]
     direction TB
-        n14(["Container shop/web"])
-        n15(["Container shop/sidecar-agent"])
-        n16(["Service shop/storefront"])
-        n17(["Ingress shop/storefront-ingress"])
-        n18[("Secret shop/shop-db")]
-        n19[("ConfigMap shop/shop-config")]
-        n20[("StatefulSet shop/postgres")]
-        n21[("Container shop/postgres")]
-        n22(["Service shop/postgres"])
-        n23[("PersistentVolumeClaim shop/postgres-pvc")]
-        n24(["ServiceAccount shop/postgres-sa"])
-        n25[("HostPath shop//var/run/docker.sock")]
-        n26(["ServiceAccount shop/default"])
+        n15[["ExternalEntity On-call engineer"]]
+        n16[["ExternalEntity Customer Browser"]]
+        n17[["ExternalEntity Customer"]]
+        n18[["ExternalEntity Internet"]]
+        n19[["ExternalEntity Internal user / operator"]]
     end
-    subgraph n27["Worker node (host OS) (trust 95)"]
+    subgraph n20["Third-party processors (trust 40)"]
     direction TB
-        n28(["Deployment shop/storefront"])
+        n21[["ExternalEntity Stripe (payment provider)"]]
+        n22[("DataStore Salesforce CRM")]
     end
-    subgraph n29["Ungrouped"]
+    subgraph n23["namespace/shop (trust 70)"]
     direction TB
-        n30(["DockerImage node:latest"])
-        n31(["ComposeService api"])
-        n32(["ComposeService cache"])
-        n33[("ComposeVolume redisdata")]
+        n24(["Container shop/web"])
+        n25(["Container shop/sidecar-agent"])
+        n26(["Service shop/storefront"])
+        n27(["Ingress shop/storefront-ingress"])
+        n28[("Secret shop/shop-db")]
+        n29[("ConfigMap shop/shop-config")]
+        n30[("StatefulSet shop/postgres")]
+        n31[("Container shop/postgres")]
+        n32(["Service shop/postgres"])
+        n33[("PersistentVolumeClaim shop/postgres-pvc")]
+        n34(["ServiceAccount shop/postgres-sa"])
+        n35[("HostPath shop//var/run/docker.sock")]
+        n36(["ServiceAccount shop/default"])
     end
-    n28 -->|⚠ runs| n14
-    n28 -->|⚠ runs| n15
-    n20 -->|runs| n21
-    n16 -->|⚠ routes-to / tcp:80| n28
-    n22 -->|routes-to / tcp:5432| n20
-    n17 -->|routes-to / http:80| n16
-    n28 -->|⚠ mounts| n25
-    n20 -->|mounts| n23
-    n21 -->|reads| n18
-    n28 -->|⚠ assumes| n26
-    n20 -->|assumes| n24
-    n24 -->|⚠ granted| n8
-    n11 -->|⚠ external-access / http| n17
-    n11 -->|⚠ external-access / tcp:80| n16
-    n11 -->|⚠ external-access / tcp:5432| n22
-    n11 -->|external-access| n31
+    subgraph n37["Worker node (host OS) (trust 95)"]
+    direction TB
+        n38(["Deployment shop/storefront"])
+    end
+    subgraph n39["Corporate DMZ (trust 30)"]
+    direction TB
+        n40(["Process Billing API"])
+        n41[("DataStore Customer Billing Database")]
+    end
+    subgraph n42["Ungrouped"]
+    direction TB
+        n43(["DockerImage node:latest"])
+        n44(["ComposeService api"])
+        n45(["ComposeService cache"])
+        n46[("ComposeVolume redisdata")]
+    end
+    n38 -->|⚠ calls / HTTPS/TLS-1.3| n21
+    n30 -->|⚠ calls / http| n22
+    n15 -->|⚠ calls / https| n38
+    n16 -->|⚠ calls / https| n40
+    n40 -->|calls / sql| n41
+    n17 -->|⚠ calls / https| n11
+    n11 -->|calls / http| n12
+    n12 -->|calls / sql| n13
+    n38 -->|⚠ runs| n24
+    n38 -->|⚠ runs| n25
+    n30 -->|runs| n31
+    n26 -->|⚠ routes-to / tcp:80| n38
+    n32 -->|routes-to / tcp:5432| n30
+    n27 -->|routes-to / http:80| n26
+    n38 -->|⚠ mounts| n35
+    n30 -->|mounts| n33
+    n31 -->|reads| n28
+    n38 -->|⚠ assumes| n36
+    n30 -->|assumes| n34
+    n34 -->|⚠ granted| n8
+    n18 -->|⚠ external-access / http| n27
+    n18 -->|⚠ external-access / tcp:80| n26
+    n18 -->|⚠ external-access / tcp:5432| n32
+    n18 -->|external-access| n44
     class n7 low;
+    class n38 crit;
+    class n24 crit;
+    class n25 high;
+    class n26 crit;
+    class n27 crit;
     class n28 crit;
-    class n14 crit;
-    class n15 high;
-    class n16 crit;
-    class n17 crit;
-    class n18 crit;
-    class n19 med;
-    class n20 crit;
-    class n21 crit;
-    class n22 crit;
-    class n23 ok;
-    class n24 ok;
+    class n29 med;
+    class n30 crit;
+    class n31 crit;
+    class n32 crit;
+    class n33 ok;
+    class n34 ok;
     class n8 crit;
     class n9 ok;
     class n1 high;
@@ -142,14 +172,24 @@ flowchart LR
     class n3 med;
     class n4 high;
     class n5 ok;
-    class n30 high;
-    class n31 crit;
-    class n32 med;
-    class n33 ok;
-    class n11 ext;
-    class n12 ext;
-    class n25 ok;
-    class n26 med;
+    class n43 high;
+    class n44 crit;
+    class n45 med;
+    class n46 ok;
+    class n21 ext;
+    class n22 ok;
+    class n15 ext;
+    class n16 ext;
+    class n40 ok;
+    class n41 ok;
+    class n17 ext;
+    class n11 ok;
+    class n12 ok;
+    class n13 ok;
+    class n18 ext;
+    class n19 ext;
+    class n35 ok;
+    class n36 med;
 ```
 
 ## Attack paths
@@ -309,15 +349,15 @@ flowchart LR
     class n3 crit;
 ```
 
-### AP-6: ExternalEntity Internet → HostPath shop//var/run/docker.sock
+### AP-6: ExternalEntity Internet → DataStore Salesforce CRM
 
-**Score 119** (critical) · 4 hops · 4 enabling findings
+**Score 125** (critical) · 4 hops · 5 enabling findings
 
 1. Attacker starts at ExternalEntity Internet.
-1. Sends a request to Service shop/storefront, where loadbalancer service has no source ip restriction (TF-NET-007, risk 20) provides the next step.
-1. Is routed to Deployment shop/storefront, where container mounts the container runtime socket (TF-K8S-004, risk 25) provides the next step.
-1. Reads the mounted HostPath shop//var/run/docker.sock.
-1. Objective reached: HostPath shop//var/run/docker.sock (privileged access).
+1. Sends a request to Service shop/postgres, where service exposes an administrative or database port (TF-NET-008, risk 25) provides the next step.
+1. Is routed to StatefulSet shop/postgres, where internet-reachable workload has no ingress networkpolicy (TF-NET-001, risk 20) provides the next step.
+1. Calls DataStore Salesforce CRM.
+1. Objective reached: DataStore Salesforce CRM (pii).
 
 ```mermaid
 flowchart LR
@@ -329,12 +369,12 @@ flowchart LR
     classDef ok   fill:#14532d,stroke:#22c55e,stroke-width:1px,color:#fff;
     classDef ext  fill:#3f3f46,stroke:#a1a1aa,stroke-width:2px,color:#fff;
     n0[["0. ExternalEntity Internet"]]
-    n1(["1. Service shop/storefront"])
-    n2(["2. Deployment shop/storefront"])
-    n3[("3. HostPath shop//var/run/docker.sock")]
+    n1(["1. Service shop/postgres"])
+    n2[("2. StatefulSet shop/postgres")]
+    n3[("3. DataStore Salesforce CRM")]
     n0 ==>|external-access| n1
     n1 ==>|routes-to| n2
-    n2 ==>|mounts| n3
+    n2 ==>|calls| n3
     class n0 ext;
     class n3 crit;
 ```
@@ -344,15 +384,15 @@ flowchart LR
 | Category | Findings | Highest risk |
 |---|---|---|
 | **S** Spoofing | 21 | 25 |
-| **T** Tampering | 27 | 25 |
+| **T** Tampering | 29 | 25 |
 | **R** Repudiation | 0 | 0 |
-| **I** Information Disclosure | 30 | 25 |
+| **I** Information Disclosure | 32 | 25 |
 | **D** Denial of Service | 20 | 20 |
 | **E** Elevation of Privilege | 30 | 25 |
 
 ## Findings
 
-*Showing the 60 highest-risk of 73 findings. Full set in `threat-model.json`.*
+*Showing the 60 highest-risk of 75 findings. Full set in `threat-model.json`.*
 
 ### 25/25 · Compose service runs privileged
 
@@ -437,9 +477,9 @@ Container shop/web runs with `privileged: true`, which disables essentially ever
 
 **Evidence**
 
-- securityContext.privileged is true (observed: `True`) — `app.yaml:23` at `spec.template.spec.containers[0].securityContext.privileged`
+- securityContext.privileged is true (observed: `True`) — `k8s/app.yaml:23` at `spec.template.spec.containers[0].securityContext.privileged`
 
-**Risk** — likelihood 5 × impact 5 = 25. Exposure: 3 hop(s) from the internet; blast radius 4; data sensitivity 1.
+**Risk** — likelihood 5 × impact 5 = 25. Exposure: 3 hop(s) from the internet; blast radius 5; data sensitivity 1.
 
 - Reachable from the internet in 3 hops.
 
@@ -468,9 +508,9 @@ Deployment shop/storefront mounts the Docker/containerd/CRI-O socket. This is eq
 
 **Evidence**
 
-- hostPath volume includes the runtime socket (observed: `['/var/run/docker.sock']`) — `app.yaml:7` at `spec.template.spec.volumes`
+- hostPath volume includes the runtime socket (observed: `['/var/run/docker.sock']`) — `k8s/app.yaml:7` at `spec.template.spec.volumes`
 
-**Risk** — likelihood 5 × impact 5 = 25. Exposure: 2 hop(s) from the internet; blast radius 4; data sensitivity 1.
+**Risk** — likelihood 5 × impact 5 = 25. Exposure: 2 hop(s) from the internet; blast radius 5; data sensitivity 1.
 
 - Reachable from the internet in 2 hops.
 
@@ -497,9 +537,9 @@ Environment variables DB_PASSWORD, STRIPE_API_KEY on Container shop/web contain 
 
 **Evidence**
 
-- env vars with literal values: DB_PASSWORD, STRIPE_API_KEY (observed: `['DB_PASSWORD', 'STRIPE_API_KEY']`) — `app.yaml:23` at `spec.template.spec.containers[0].env`
+- env vars with literal values: DB_PASSWORD, STRIPE_API_KEY (observed: `['DB_PASSWORD', 'STRIPE_API_KEY']`) — `k8s/app.yaml:23` at `spec.template.spec.containers[0].env`
 
-**Risk** — likelihood 5 × impact 5 = 25. Exposure: 3 hop(s) from the internet; blast radius 4; data sensitivity 1.
+**Risk** — likelihood 5 × impact 5 = 25. Exposure: 3 hop(s) from the internet; blast radius 5; data sensitivity 1.
 
 - Reachable from the internet in 3 hops.
 
@@ -528,10 +568,10 @@ Ingress shop/storefront-ingress accepts traffic without TLS. Credentials, sessio
 
 **Evidence**
 
-- spec.tls is absent (observed: `False`) — `app.yaml:63` at `spec.tls`
-- hosts = *.shop.example.com (observed: `['*.shop.example.com']`) — `app.yaml:63`
+- spec.tls is absent (observed: `False`) — `k8s/app.yaml:63` at `spec.tls`
+- hosts = *.shop.example.com (observed: `['*.shop.example.com']`) — `k8s/app.yaml:63`
 
-**Risk** — likelihood 5 × impact 5 = 25. Exposure: 1 hop(s) from the internet; blast radius 6; data sensitivity 1.
+**Risk** — likelihood 5 × impact 5 = 25. Exposure: 1 hop(s) from the internet; blast radius 7; data sensitivity 1.
 
 - Directly reachable from the internet.
 
@@ -560,10 +600,10 @@ Service shop/postgres exposes port(s) 5432 and is reachable from outside the clu
 
 **Evidence**
 
-- exposed admin/data ports: 5432 (observed: `[5432]`) — `app.yaml:129` at `spec.ports`
-- service type = NodePort (observed: `NodePort`) — `app.yaml:129` at `spec.type`
+- exposed admin/data ports: 5432 (observed: `[5432]`) — `k8s/app.yaml:129` at `spec.ports`
+- service type = NodePort (observed: `NodePort`) — `k8s/app.yaml:129` at `spec.type`
 
-**Risk** — likelihood 5 × impact 5 = 25. Exposure: 1 hop(s) from the internet; blast radius 6; data sensitivity 4.
+**Risk** — likelihood 5 × impact 5 = 25. Exposure: 1 hop(s) from the internet; blast radius 7; data sensitivity 4.
 
 - Directly reachable from the internet.
 - Handles personal or otherwise regulated data.
@@ -588,7 +628,7 @@ Secret shop/shop-db contains inline `data`/`stringData` in a manifest tracked in
 
 **Evidence**
 
-- inline keys: password, username (observed: `['password', 'username']`) — `app.yaml:80`
+- inline keys: password, username (observed: `['password', 'username']`) — `k8s/app.yaml:80`
 
 **Risk** — likelihood 4 × impact 5 = 20. Exposure: 4 hop(s) from the internet; blast radius 0; data sensitivity 5.
 
@@ -625,7 +665,7 @@ ExternalEntity Internet -> Ingress shop/storefront-ingress carries traffic from 
 
 **Evidence**
 
-- protocol = http, encrypted = false (observed: `http`) — `app.yaml:63`
+- protocol = http, encrypted = false (observed: `http`) — `k8s/app.yaml:63`
 
 **Risk** — likelihood 5 × impact 4 = 20. Exposure: 0 hop(s) from the internet; blast radius 0; data sensitivity 1.
 
@@ -645,7 +685,7 @@ ExternalEntity Internet -> Service shop/storefront carries traffic from an untru
 
 **Evidence**
 
-- protocol = tcp:80, encrypted = false (observed: `tcp:80`) — `app.yaml:51`
+- protocol = tcp:80, encrypted = false (observed: `tcp:80`) — `k8s/app.yaml:51`
 
 **Risk** — likelihood 5 × impact 4 = 20. Exposure: 0 hop(s) from the internet; blast radius 0; data sensitivity 1.
 
@@ -665,9 +705,9 @@ allowPrivilegeEscalation is not set to false on Container shop/postgres. A setui
 
 **Evidence**
 
-- allowPrivilegeEscalation is unset or true — `app.yaml:115` at `spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation`
+- allowPrivilegeEscalation is unset or true — `k8s/app.yaml:115` at `spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation`
 
-**Risk** — likelihood 4 × impact 5 = 20. Exposure: 3 hop(s) from the internet; blast radius 5; data sensitivity 4.
+**Risk** — likelihood 4 × impact 5 = 20. Exposure: 3 hop(s) from the internet; blast radius 6; data sensitivity 4.
 
 - Reachable from the internet in 3 hops.
 - Handles personal or otherwise regulated data.
@@ -692,10 +732,10 @@ Container shop/postgres has no runAsNonRoot/runAsUser constraint, so it runs as 
 
 **Evidence**
 
-- runAsUser is unset or 0 — `app.yaml:115` at `spec.template.spec.containers[0].securityContext.runAsUser`
-- runAsNonRoot is not true — `app.yaml:115` at `spec.template.spec.containers[0].securityContext.runAsNonRoot`
+- runAsUser is unset or 0 — `k8s/app.yaml:115` at `spec.template.spec.containers[0].securityContext.runAsUser`
+- runAsNonRoot is not true — `k8s/app.yaml:115` at `spec.template.spec.containers[0].securityContext.runAsNonRoot`
 
-**Risk** — likelihood 4 × impact 5 = 20. Exposure: 3 hop(s) from the internet; blast radius 5; data sensitivity 4.
+**Risk** — likelihood 4 × impact 5 = 20. Exposure: 3 hop(s) from the internet; blast radius 6; data sensitivity 4.
 
 - Reachable from the internet in 3 hops.
 - Handles personal or otherwise regulated data.
@@ -724,10 +764,10 @@ Deployment shop/storefront is reachable from the internet and no NetworkPolicy r
 
 **Evidence**
 
-- no NetworkPolicy selects this workload for ingress (observed: `False`) — `app.yaml:7`
-- hops from internet = 2 (observed: `2`) — `app.yaml:7`
+- no NetworkPolicy selects this workload for ingress (observed: `False`) — `k8s/app.yaml:7`
+- hops from internet = 2 (observed: `2`) — `k8s/app.yaml:7`
 
-**Risk** — likelihood 4 × impact 5 = 20. Exposure: 2 hop(s) from the internet; blast radius 4; data sensitivity 1.
+**Risk** — likelihood 4 × impact 5 = 20. Exposure: 2 hop(s) from the internet; blast radius 5; data sensitivity 1.
 
 - Reachable from the internet in 2 hops.
 
@@ -772,10 +812,10 @@ StatefulSet shop/postgres is reachable from the internet and no NetworkPolicy re
 
 **Evidence**
 
-- no NetworkPolicy selects this workload for ingress (observed: `False`) — `app.yaml:99`
-- hops from internet = 2 (observed: `2`) — `app.yaml:99`
+- no NetworkPolicy selects this workload for ingress (observed: `False`) — `k8s/app.yaml:99`
+- hops from internet = 2 (observed: `2`) — `k8s/app.yaml:99`
 
-**Risk** — likelihood 4 × impact 5 = 20. Exposure: 2 hop(s) from the internet; blast radius 5; data sensitivity 4.
+**Risk** — likelihood 4 × impact 5 = 20. Exposure: 2 hop(s) from the internet; blast radius 6; data sensitivity 4.
 
 - Reachable from the internet in 2 hops.
 - Handles personal or otherwise regulated data.
@@ -822,10 +862,10 @@ Service shop/storefront provisions a cloud load balancer with no loadBalancerSou
 
 **Evidence**
 
-- type = LoadBalancer with no loadBalancerSourceRanges (observed: `LoadBalancer`) — `app.yaml:51` at `spec.type`
-- ports = 80 (observed: `[80]`) — `app.yaml:51`
+- type = LoadBalancer with no loadBalancerSourceRanges (observed: `LoadBalancer`) — `k8s/app.yaml:51` at `spec.type`
+- ports = 80 (observed: `[80]`) — `k8s/app.yaml:51`
 
-**Risk** — likelihood 5 × impact 4 = 20. Exposure: 1 hop(s) from the internet; blast radius 5; data sensitivity 1.
+**Risk** — likelihood 5 × impact 4 = 20. Exposure: 1 hop(s) from the internet; blast radius 6; data sensitivity 1.
 
 - Directly reachable from the internet.
 
@@ -850,8 +890,8 @@ ClusterRole shop-operator grants `*` verbs on `*` resources cluster-wide. Any su
 
 **Evidence**
 
-- verbs include '*' (observed: `['*']`) — `app.yaml:156` at `rules`
-- resources include '*' (observed: `['*']`) — `app.yaml:156` at `rules`
+- verbs include '*' (observed: `['*']`) — `k8s/app.yaml:156` at `rules`
+- resources include '*' (observed: `['*']`) — `k8s/app.yaml:156` at `rules`
 
 **Risk** — likelihood 4 × impact 5 = 20. Exposure: 4 hop(s) from the internet; blast radius 0; data sensitivity 1.
 
@@ -906,9 +946,9 @@ allowPrivilegeEscalation is not set to false on Container shop/sidecar-agent. A 
 
 **Evidence**
 
-- allowPrivilegeEscalation is unset or true — `app.yaml:41` at `spec.template.spec.containers[1].securityContext.allowPrivilegeEscalation`
+- allowPrivilegeEscalation is unset or true — `k8s/app.yaml:41` at `spec.template.spec.containers[1].securityContext.allowPrivilegeEscalation`
 
-**Risk** — likelihood 4 × impact 4 = 16. Exposure: 3 hop(s) from the internet; blast radius 4; data sensitivity 1.
+**Risk** — likelihood 4 × impact 4 = 16. Exposure: 3 hop(s) from the internet; blast radius 5; data sensitivity 1.
 
 - Reachable from the internet in 3 hops.
 
@@ -931,10 +971,10 @@ Container shop/web has no runAsNonRoot/runAsUser constraint, so it runs as UID 0
 
 **Evidence**
 
-- runAsUser is unset or 0 (observed: `0`) — `app.yaml:23` at `spec.template.spec.containers[0].securityContext.runAsUser`
-- runAsNonRoot is not true — `app.yaml:23` at `spec.template.spec.containers[0].securityContext.runAsNonRoot`
+- runAsUser is unset or 0 (observed: `0`) — `k8s/app.yaml:23` at `spec.template.spec.containers[0].securityContext.runAsUser`
+- runAsNonRoot is not true — `k8s/app.yaml:23` at `spec.template.spec.containers[0].securityContext.runAsNonRoot`
 
-**Risk** — likelihood 4 × impact 4 = 16. Exposure: 3 hop(s) from the internet; blast radius 4; data sensitivity 1.
+**Risk** — likelihood 4 × impact 4 = 16. Exposure: 3 hop(s) from the internet; blast radius 5; data sensitivity 1.
 
 - Reachable from the internet in 3 hops.
 
@@ -961,10 +1001,10 @@ Container shop/sidecar-agent has no runAsNonRoot/runAsUser constraint, so it run
 
 **Evidence**
 
-- runAsUser is unset or 0 — `app.yaml:41` at `spec.template.spec.containers[1].securityContext.runAsUser`
-- runAsNonRoot is not true — `app.yaml:41` at `spec.template.spec.containers[1].securityContext.runAsNonRoot`
+- runAsUser is unset or 0 — `k8s/app.yaml:41` at `spec.template.spec.containers[1].securityContext.runAsUser`
+- runAsNonRoot is not true — `k8s/app.yaml:41` at `spec.template.spec.containers[1].securityContext.runAsNonRoot`
 
-**Risk** — likelihood 4 × impact 4 = 16. Exposure: 3 hop(s) from the internet; blast radius 4; data sensitivity 1.
+**Risk** — likelihood 4 × impact 4 = 16. Exposure: 3 hop(s) from the internet; blast radius 5; data sensitivity 1.
 
 - Reachable from the internet in 3 hops.
 
@@ -991,9 +1031,9 @@ Deployment shop/storefront runs with hostNetwork: true. The pod shares the node'
 
 **Evidence**
 
-- spec.hostNetwork is true (observed: `True`) — `app.yaml:7` at `spec.template.spec.hostNetwork`
+- spec.hostNetwork is true (observed: `True`) — `k8s/app.yaml:7` at `spec.template.spec.hostNetwork`
 
-**Risk** — likelihood 4 × impact 4 = 16. Exposure: 2 hop(s) from the internet; blast radius 4; data sensitivity 1.
+**Risk** — likelihood 4 × impact 4 = 16. Exposure: 2 hop(s) from the internet; blast radius 5; data sensitivity 1.
 
 - Reachable from the internet in 2 hops.
 
@@ -1017,10 +1057,10 @@ Sharing hostPID lets the container see and signal every process on the node, and
 
 **Evidence**
 
-- spec.hostPID (observed: `True`) — `app.yaml:7` at `spec.template.spec.hostPID`
-- spec.hostIPC (observed: `False`) — `app.yaml:7` at `spec.template.spec.hostIPC`
+- spec.hostPID (observed: `True`) — `k8s/app.yaml:7` at `spec.template.spec.hostPID`
+- spec.hostIPC (observed: `False`) — `k8s/app.yaml:7` at `spec.template.spec.hostIPC`
 
-**Risk** — likelihood 4 × impact 4 = 16. Exposure: 2 hop(s) from the internet; blast radius 4; data sensitivity 1.
+**Risk** — likelihood 4 × impact 4 = 16. Exposure: 2 hop(s) from the internet; blast radius 5; data sensitivity 1.
 
 - Reachable from the internet in 2 hops.
 
@@ -1044,9 +1084,9 @@ Container shop/sidecar-agent adds capabilities SYS_ADMIN, NET_RAW. SYS_ADMIN is 
 
 **Evidence**
 
-- capabilities.add = SYS_ADMIN, NET_RAW (observed: `['SYS_ADMIN', 'NET_RAW']`) — `app.yaml:41` at `spec.template.spec.containers[1].securityContext.capabilities.add`
+- capabilities.add = SYS_ADMIN, NET_RAW (observed: `['SYS_ADMIN', 'NET_RAW']`) — `k8s/app.yaml:41` at `spec.template.spec.containers[1].securityContext.capabilities.add`
 
-**Risk** — likelihood 4 × impact 4 = 16. Exposure: 3 hop(s) from the internet; blast radius 4; data sensitivity 1.
+**Risk** — likelihood 4 × impact 4 = 16. Exposure: 3 hop(s) from the internet; blast radius 5; data sensitivity 1.
 
 - Reachable from the internet in 3 hops.
 
@@ -1071,9 +1111,9 @@ A NodePort opens the port on every node in the cluster. Whether that is internet
 
 **Evidence**
 
-- nodePorts = 30432 (observed: `[30432]`) — `app.yaml:129`
+- nodePorts = 30432 (observed: `[30432]`) — `k8s/app.yaml:129`
 
-**Risk** — likelihood 4 × impact 4 = 16. Exposure: 1 hop(s) from the internet; blast radius 6; data sensitivity 4.
+**Risk** — likelihood 4 × impact 4 = 16. Exposure: 1 hop(s) from the internet; blast radius 7; data sensitivity 4.
 
 - Directly reachable from the internet.
 - Handles personal or otherwise regulated data.
@@ -1093,7 +1133,7 @@ aws_s3_bucket assets is configured with a public-read or public-read-write ACL. 
 
 **Evidence**
 
-- resource aws_s3_bucket with public ACL (observed: `aws_s3_bucket`) — `main.tf:1` at `resource.aws_s3_bucket.assets`
+- resource aws_s3_bucket with public ACL (observed: `aws_s3_bucket`) — `tf/main.tf:1` at `resource.aws_s3_bucket.assets`
 
 **Risk** — likelihood 3 × impact 5 = 15. Exposure: unreachable from an external entity; blast radius 0; data sensitivity 4.
 
@@ -1124,7 +1164,7 @@ aws_db_instance shop is assigned a public endpoint. Managed database endpoints a
 
 **Evidence**
 
-- publicly_accessible = true (observed: `aws_db_instance`) — `main.tf:5` at `resource.aws_db_instance.shop`
+- publicly_accessible = true (observed: `aws_db_instance`) — `tf/main.tf:5` at `resource.aws_db_instance.shop`
 
 **Risk** — likelihood 3 × impact 5 = 15. Exposure: unreachable from an external entity; blast radius 0; data sensitivity 4.
 
@@ -1150,7 +1190,7 @@ aws_db_instance shop has a credential-shaped attribute with a literal value. Ter
 
 **Evidence**
 
-- literal credential attribute detected (observed: `aws_db_instance`) — `main.tf:5` at `resource.aws_db_instance.shop`
+- literal credential attribute detected (observed: `aws_db_instance`) — `tf/main.tf:5` at `resource.aws_db_instance.shop`
 
 **Risk** — likelihood 3 × impact 5 = 15. Exposure: unreachable from an external entity; blast radius 0; data sensitivity 4.
 
@@ -1178,7 +1218,7 @@ aws_instance worker has a credential-shaped attribute with a literal value. Terr
 
 **Evidence**
 
-- literal credential attribute detected (observed: `aws_instance`) — `main.tf:24` at `resource.aws_instance.worker`
+- literal credential attribute detected (observed: `aws_instance`) — `tf/main.tf:24` at `resource.aws_instance.worker`
 
 **Risk** — likelihood 3 × impact 5 = 15. Exposure: unreachable from an external entity; blast radius 0; data sensitivity 1.
 
@@ -1205,7 +1245,7 @@ Secret shop/shop-db is only 4 hops from the internet along the data-flow graph. 
 
 **Evidence**
 
-- shortest path from internet = 4 hops (observed: `4`) — `app.yaml:80`
+- shortest path from internet = 4 hops (observed: `4`) — `k8s/app.yaml:80`
 
 **Risk** — likelihood 3 × impact 5 = 15. Exposure: 4 hop(s) from the internet; blast radius 0; data sensitivity 5.
 
@@ -1255,9 +1295,9 @@ Container shop/postgres keeps the default Docker capability set (CHOWN, DAC_OVER
 
 **Evidence**
 
-- capabilities.drop does not include ALL (observed: `[]`) — `app.yaml:115` at `spec.template.spec.containers[0].securityContext.capabilities.drop`
+- capabilities.drop does not include ALL (observed: `[]`) — `k8s/app.yaml:115` at `spec.template.spec.containers[0].securityContext.capabilities.drop`
 
-**Risk** — likelihood 3 × impact 4 = 12. Exposure: 3 hop(s) from the internet; blast radius 5; data sensitivity 4.
+**Risk** — likelihood 3 × impact 4 = 12. Exposure: 3 hop(s) from the internet; blast radius 6; data sensitivity 4.
 
 - Reachable from the internet in 3 hops.
 - Handles personal or otherwise regulated data.
@@ -1283,9 +1323,9 @@ A writable root filesystem lets an attacker with code execution drop a web shell
 
 **Evidence**
 
-- readOnlyRootFilesystem is not true (observed: `False`) — `app.yaml:115` at `spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem`
+- readOnlyRootFilesystem is not true (observed: `False`) — `k8s/app.yaml:115` at `spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem`
 
-**Risk** — likelihood 3 × impact 4 = 12. Exposure: 3 hop(s) from the internet; blast radius 5; data sensitivity 4.
+**Risk** — likelihood 3 × impact 4 = 12. Exposure: 3 hop(s) from the internet; blast radius 6; data sensitivity 4.
 
 - Reachable from the internet in 3 hops.
 - Handles personal or otherwise regulated data.
@@ -1316,10 +1356,10 @@ Without resource limits, Container shop/postgres can consume all allocatable CPU
 
 **Evidence**
 
-- resources.limits.cpu is unset (observed: `True`) — `app.yaml:115` at `spec.template.spec.containers[0].resources.limits.cpu`
-- resources.limits.memory is unset (observed: `True`) — `app.yaml:115` at `spec.template.spec.containers[0].resources.limits.memory`
+- resources.limits.cpu is unset (observed: `True`) — `k8s/app.yaml:115` at `spec.template.spec.containers[0].resources.limits.cpu`
+- resources.limits.memory is unset (observed: `True`) — `k8s/app.yaml:115` at `spec.template.spec.containers[0].resources.limits.memory`
 
-**Risk** — likelihood 3 × impact 4 = 12. Exposure: 3 hop(s) from the internet; blast radius 5; data sensitivity 4.
+**Risk** — likelihood 3 × impact 4 = 12. Exposure: 3 hop(s) from the internet; blast radius 6; data sensitivity 4.
 
 - Reachable from the internet in 3 hops.
 - Handles personal or otherwise regulated data.
@@ -1345,9 +1385,9 @@ No seccomp profile is applied, so the container may issue all ~350 syscalls. Mos
 
 **Evidence**
 
-- securityContext.seccompProfile is unset or Unconfined — `app.yaml:99` at `spec.template.spec.securityContext.seccompProfile`
+- securityContext.seccompProfile is unset or Unconfined — `k8s/app.yaml:99` at `spec.template.spec.securityContext.seccompProfile`
 
-**Risk** — likelihood 3 × impact 4 = 12. Exposure: 2 hop(s) from the internet; blast radius 5; data sensitivity 4.
+**Risk** — likelihood 3 × impact 4 = 12. Exposure: 2 hop(s) from the internet; blast radius 6; data sensitivity 4.
 
 - Reachable from the internet in 2 hops.
 - Handles personal or otherwise regulated data.
@@ -1374,9 +1414,9 @@ StatefulSet shop/postgres has unrestricted egress. That is the exfiltration path
 
 **Evidence**
 
-- no NetworkPolicy restricts egress (observed: `False`) — `app.yaml:99`
+- no NetworkPolicy restricts egress (observed: `False`) — `k8s/app.yaml:99`
 
-**Risk** — likelihood 3 × impact 4 = 12. Exposure: 2 hop(s) from the internet; blast radius 5; data sensitivity 4.
+**Risk** — likelihood 3 × impact 4 = 12. Exposure: 2 hop(s) from the internet; blast radius 6; data sensitivity 4.
 
 - Reachable from the internet in 2 hops.
 - Handles personal or otherwise regulated data.
@@ -1415,10 +1455,10 @@ Ingress shop/storefront-ingress is exposed to the internet with no ingress-level
 
 **Evidence**
 
-- no auth-* annotations (observed: `False`) — `app.yaml:63` at `metadata.annotations`
-- no rate-limit annotations (observed: `False`) — `app.yaml:63`
+- no auth-* annotations (observed: `False`) — `k8s/app.yaml:63` at `metadata.annotations`
+- no rate-limit annotations (observed: `False`) — `k8s/app.yaml:63`
 
-**Risk** — likelihood 4 × impact 3 = 12. Exposure: 1 hop(s) from the internet; blast radius 6; data sensitivity 1.
+**Risk** — likelihood 4 × impact 3 = 12. Exposure: 1 hop(s) from the internet; blast radius 7; data sensitivity 1.
 
 - Directly reachable from the internet.
 
@@ -1445,9 +1485,9 @@ A wildcard host binds this backend to every subdomain, which enables subdomain t
 
 **Evidence**
 
-- hosts = *.shop.example.com (observed: `['*.shop.example.com']`) — `app.yaml:63`
+- hosts = *.shop.example.com (observed: `['*.shop.example.com']`) — `k8s/app.yaml:63`
 
-**Risk** — likelihood 4 × impact 3 = 12. Exposure: 1 hop(s) from the internet; blast radius 6; data sensitivity 1.
+**Risk** — likelihood 4 × impact 3 = 12. Exposure: 1 hop(s) from the internet; blast radius 7; data sensitivity 1.
 
 - Directly reachable from the internet.
 
@@ -1465,7 +1505,7 @@ Write access to Secrets allows an attacker to plant credentials that other workl
 
 **Evidence**
 
-- write verbs on secrets: * (observed: `['*']`) — `app.yaml:156` at `rules`
+- write verbs on secrets: * (observed: `['*']`) — `k8s/app.yaml:156` at `rules`
 
 **Risk** — likelihood 3 × impact 4 = 12. Exposure: 4 hop(s) from the internet; blast radius 0; data sensitivity 1.
 
@@ -1485,7 +1525,7 @@ aws_instance worker allows IMDSv1. An SSRF in any application on the instance re
 
 **Evidence**
 
-- http_tokens is not 'required' (observed: `False`) — `main.tf:24` at `resource.aws_instance.worker`
+- http_tokens is not 'required' (observed: `False`) — `tf/main.tf:24` at `resource.aws_instance.worker`
 
 **Risk** — likelihood 2 × impact 5 = 10. Exposure: unreachable from an external entity; blast radius 0; data sensitivity 1.
 
@@ -1579,6 +1619,52 @@ deploy:
 
 ---
 
+### 9/25 · Sensitive data crosses a trust boundary
+
+`TF-FLOW-002` · **medium** · component `k8s:Deployment:shop/storefront--calls-->manual:payment-provider` · confidence *likely* · STRIDE I (Information Disclosure), T (Tampering)
+
+Deployment shop/storefront -> ExternalEntity Stripe (payment provider) moves data classified as pci across a trust boundary. Each boundary crossing is a place where authentication, authorisation, encryption, and logging all need to be re-established -- assumptions that held on one side rarely hold on the other.
+
+**Evidence**
+
+- crosses boundary:node (observed: `boundary:node`) — `threatforge-overlay.yml:8` at `data_flows[0]`
+- carries pci (observed: `['pci']`) — `threatforge-overlay.yml:8` at `data_flows[0]`
+
+**Risk** — likelihood 3 × impact 3 = 9. Exposure: 2 hop(s) from the internet; blast radius 0; data sensitivity 1.
+
+- Reachable from the internet in 2 hops.
+
+**Remediation** — Enforce mTLS and explicit authorisation on this hop; log both sides. *(effort: high, breaking risk: medium)*
+
+A service mesh (Istio, Linkerd) gives mTLS and per-hop authorisation policy without application changes, and produces the flow-level telemetry you need to detect abuse of this path.
+
+**CWE** CWE-311, CWE-306 · **MITRE** T1557, T1041 · **NIST** SC-8, AC-4
+
+---
+
+### 9/25 · Sensitive data crosses a trust boundary
+
+`TF-FLOW-002` · **medium** · component `k8s:StatefulSet:shop/postgres--calls-->manual:crm-saas` · confidence *likely* · STRIDE I (Information Disclosure), T (Tampering)
+
+StatefulSet shop/postgres -> DataStore Salesforce CRM moves data classified as pii across a trust boundary. Each boundary crossing is a place where authentication, authorisation, encryption, and logging all need to be re-established -- assumptions that held on one side rarely hold on the other.
+
+**Evidence**
+
+- crosses boundary:namespace:shop (observed: `boundary:namespace:shop`) — `threatforge-overlay.yml:8` at `data_flows[1]`
+- carries pii (observed: `['pii']`) — `threatforge-overlay.yml:8` at `data_flows[1]`
+
+**Risk** — likelihood 3 × impact 3 = 9. Exposure: 2 hop(s) from the internet; blast radius 0; data sensitivity 1.
+
+- Reachable from the internet in 2 hops.
+
+**Remediation** — Enforce mTLS and explicit authorisation on this hop; log both sides. *(effort: high, breaking risk: medium)*
+
+A service mesh (Istio, Linkerd) gives mTLS and per-hop authorisation policy without application changes, and produces the flow-level telemetry you need to detect abuse of this path.
+
+**CWE** CWE-311, CWE-306 · **MITRE** T1557, T1041 · **NIST** SC-8, AC-4
+
+---
+
 ### 9/25 · Container root filesystem is writable
 
 `TF-K8S-010` · **medium** · component `k8s:Container:shop/storefront/web` · confidence *confirmed* · STRIDE T (Tampering)
@@ -1587,9 +1673,9 @@ A writable root filesystem lets an attacker with code execution drop a web shell
 
 **Evidence**
 
-- readOnlyRootFilesystem is not true (observed: `False`) — `app.yaml:23` at `spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem`
+- readOnlyRootFilesystem is not true (observed: `False`) — `k8s/app.yaml:23` at `spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem`
 
-**Risk** — likelihood 3 × impact 3 = 9. Exposure: 3 hop(s) from the internet; blast radius 4; data sensitivity 1.
+**Risk** — likelihood 3 × impact 3 = 9. Exposure: 3 hop(s) from the internet; blast radius 5; data sensitivity 1.
 
 - Reachable from the internet in 3 hops.
 
@@ -1618,9 +1704,9 @@ A writable root filesystem lets an attacker with code execution drop a web shell
 
 **Evidence**
 
-- readOnlyRootFilesystem is not true (observed: `False`) — `app.yaml:41` at `spec.template.spec.containers[1].securityContext.readOnlyRootFilesystem`
+- readOnlyRootFilesystem is not true (observed: `False`) — `k8s/app.yaml:41` at `spec.template.spec.containers[1].securityContext.readOnlyRootFilesystem`
 
-**Risk** — likelihood 3 × impact 3 = 9. Exposure: 3 hop(s) from the internet; blast radius 4; data sensitivity 1.
+**Risk** — likelihood 3 × impact 3 = 9. Exposure: 3 hop(s) from the internet; blast radius 5; data sensitivity 1.
 
 - Reachable from the internet in 3 hops.
 
@@ -1649,9 +1735,9 @@ Container shop/web references image `shop/storefront:latest` by a mutable tag. W
 
 **Evidence**
 
-- image = shop/storefront:latest (observed: `shop/storefront:latest`) — `app.yaml:23` at `spec.template.spec.containers[0].image`
+- image = shop/storefront:latest (observed: `shop/storefront:latest`) — `k8s/app.yaml:23` at `spec.template.spec.containers[0].image`
 
-**Risk** — likelihood 3 × impact 3 = 9. Exposure: 3 hop(s) from the internet; blast radius 4; data sensitivity 1.
+**Risk** — likelihood 3 × impact 3 = 9. Exposure: 3 hop(s) from the internet; blast radius 5; data sensitivity 1.
 
 - Reachable from the internet in 3 hops.
 
@@ -1674,9 +1760,9 @@ Container shop/sidecar-agent references image `vendor/agent` by a mutable tag. W
 
 **Evidence**
 
-- image = vendor/agent (observed: `vendor/agent`) — `app.yaml:41` at `spec.template.spec.containers[1].image`
+- image = vendor/agent (observed: `vendor/agent`) — `k8s/app.yaml:41` at `spec.template.spec.containers[1].image`
 
-**Risk** — likelihood 3 × impact 3 = 9. Exposure: 3 hop(s) from the internet; blast radius 4; data sensitivity 1.
+**Risk** — likelihood 3 × impact 3 = 9. Exposure: 3 hop(s) from the internet; blast radius 5; data sensitivity 1.
 
 - Reachable from the internet in 3 hops.
 
@@ -1699,10 +1785,10 @@ Without resource limits, Container shop/web can consume all allocatable CPU and 
 
 **Evidence**
 
-- resources.limits.cpu is unset (observed: `True`) — `app.yaml:23` at `spec.template.spec.containers[0].resources.limits.cpu`
-- resources.limits.memory is unset (observed: `True`) — `app.yaml:23` at `spec.template.spec.containers[0].resources.limits.memory`
+- resources.limits.cpu is unset (observed: `True`) — `k8s/app.yaml:23` at `spec.template.spec.containers[0].resources.limits.cpu`
+- resources.limits.memory is unset (observed: `True`) — `k8s/app.yaml:23` at `spec.template.spec.containers[0].resources.limits.memory`
 
-**Risk** — likelihood 3 × impact 3 = 9. Exposure: 3 hop(s) from the internet; blast radius 4; data sensitivity 1.
+**Risk** — likelihood 3 × impact 3 = 9. Exposure: 3 hop(s) from the internet; blast radius 5; data sensitivity 1.
 
 - Reachable from the internet in 3 hops.
 
@@ -1726,10 +1812,10 @@ Without resource limits, Container shop/sidecar-agent can consume all allocatabl
 
 **Evidence**
 
-- resources.limits.cpu is unset (observed: `True`) — `app.yaml:41` at `spec.template.spec.containers[1].resources.limits.cpu`
-- resources.limits.memory is unset (observed: `True`) — `app.yaml:41` at `spec.template.spec.containers[1].resources.limits.memory`
+- resources.limits.cpu is unset (observed: `True`) — `k8s/app.yaml:41` at `spec.template.spec.containers[1].resources.limits.cpu`
+- resources.limits.memory is unset (observed: `True`) — `k8s/app.yaml:41` at `spec.template.spec.containers[1].resources.limits.memory`
 
-**Risk** — likelihood 3 × impact 3 = 9. Exposure: 3 hop(s) from the internet; blast radius 4; data sensitivity 1.
+**Risk** — likelihood 3 × impact 3 = 9. Exposure: 3 hop(s) from the internet; blast radius 5; data sensitivity 1.
 
 - Reachable from the internet in 3 hops.
 
@@ -1753,9 +1839,9 @@ No seccomp profile is applied, so the container may issue all ~350 syscalls. Mos
 
 **Evidence**
 
-- securityContext.seccompProfile is unset or Unconfined — `app.yaml:7` at `spec.template.spec.securityContext.seccompProfile`
+- securityContext.seccompProfile is unset or Unconfined — `k8s/app.yaml:7` at `spec.template.spec.securityContext.seccompProfile`
 
-**Risk** — likelihood 3 × impact 3 = 9. Exposure: 2 hop(s) from the internet; blast radius 4; data sensitivity 1.
+**Risk** — likelihood 3 × impact 3 = 9. Exposure: 2 hop(s) from the internet; blast radius 5; data sensitivity 1.
 
 - Reachable from the internet in 2 hops.
 
@@ -1780,10 +1866,10 @@ Deployment shop/storefront runs as the namespace `default` service account with 
 
 **Evidence**
 
-- serviceAccountName is 'default' (observed: `default`) — `app.yaml:7` at `spec.template.spec.serviceAccountName`
-- automountServiceAccountToken is not disabled — `app.yaml:7` at `spec.template.spec.automountServiceAccountToken`
+- serviceAccountName is 'default' (observed: `default`) — `k8s/app.yaml:7` at `spec.template.spec.serviceAccountName`
+- automountServiceAccountToken is not disabled — `k8s/app.yaml:7` at `spec.template.spec.automountServiceAccountToken`
 
-**Risk** — likelihood 3 × impact 3 = 9. Exposure: 2 hop(s) from the internet; blast radius 4; data sensitivity 1.
+**Risk** — likelihood 3 × impact 3 = 9. Exposure: 2 hop(s) from the internet; blast radius 5; data sensitivity 1.
 
 - Reachable from the internet in 2 hops.
 
@@ -1807,9 +1893,9 @@ Container shop/web binds host port(s) 8080. The service is reachable on every no
 
 **Evidence**
 
-- hostPort = 8080 (observed: `[8080]`) — `app.yaml:23` at `spec.template.spec.containers[0].ports`
+- hostPort = 8080 (observed: `[8080]`) — `k8s/app.yaml:23` at `spec.template.spec.containers[0].ports`
 
-**Risk** — likelihood 3 × impact 3 = 9. Exposure: 3 hop(s) from the internet; blast radius 4; data sensitivity 1.
+**Risk** — likelihood 3 × impact 3 = 9. Exposure: 3 hop(s) from the internet; blast radius 5; data sensitivity 1.
 
 - Reachable from the internet in 3 hops.
 
@@ -1827,9 +1913,9 @@ Deployment shop/storefront has unrestricted egress. That is the exfiltration pat
 
 **Evidence**
 
-- no NetworkPolicy restricts egress (observed: `False`) — `app.yaml:7`
+- no NetworkPolicy restricts egress (observed: `False`) — `k8s/app.yaml:7`
 
-**Risk** — likelihood 3 × impact 3 = 9. Exposure: 2 hop(s) from the internet; blast radius 4; data sensitivity 1.
+**Risk** — likelihood 3 × impact 3 = 9. Exposure: 2 hop(s) from the internet; blast radius 5; data sensitivity 1.
 
 - Reachable from the internet in 2 hops.
 
@@ -1868,7 +1954,7 @@ The `default` ServiceAccount in namespace shop automounts its token into every p
 
 - automountServiceAccountToken is not false — `<implicit>` at `automountServiceAccountToken`
 
-**Risk** — likelihood 3 × impact 3 = 9. Exposure: 3 hop(s) from the internet; blast radius 4; data sensitivity 1.
+**Risk** — likelihood 3 × impact 3 = 9. Exposure: 3 hop(s) from the internet; blast radius 5; data sensitivity 1.
 
 - Reachable from the internet in 3 hops.
 
@@ -1895,7 +1981,7 @@ aws_security_group web permits inbound traffic from the entire internet on port(
 
 **Evidence**
 
-- open ports = 22 from 0.0.0.0/0 (observed: `[22]`) — `main.tf:14` at `resource.aws_security_group.web`
+- open ports = 22 from 0.0.0.0/0 (observed: `[22]`) — `tf/main.tf:14` at `resource.aws_security_group.web`
 
 **Risk** — likelihood 2 × impact 4 = 8. Exposure: unreachable from an external entity; blast radius 0; data sensitivity 1.
 
@@ -1924,7 +2010,7 @@ aws_db_instance shop stores data unencrypted at rest. Snapshot sharing, disk dec
 
 **Evidence**
 
-- encryption is explicitly disabled (observed: `False`) — `main.tf:5` at `resource.aws_db_instance.shop`
+- encryption is explicitly disabled (observed: `False`) — `tf/main.tf:5` at `resource.aws_db_instance.shop`
 
 **Risk** — likelihood 2 × impact 4 = 8. Exposure: unreachable from an external entity; blast radius 0; data sensitivity 4.
 
@@ -1970,7 +2056,7 @@ ConfigMap shop/shop-config holds keys API_TOKEN that look like credentials. Conf
 
 **Evidence**
 
-- credential-like keys: API_TOKEN (observed: `['API_TOKEN']`) — `app.yaml:90`
+- credential-like keys: API_TOKEN (observed: `['API_TOKEN']`) — `k8s/app.yaml:90`
 
 **Risk** — likelihood 2 × impact 4 = 8. Exposure: unreachable from an external entity; blast radius 0; data sensitivity 2.
 
@@ -1982,56 +2068,6 @@ ConfigMap shop/shop-config holds keys API_TOKEN that look like credentials. Conf
 
 ---
 
-### 6/25 · Container image is not pinned by digest
+## Parse warnings
 
-`TF-K8S-012` · **medium** · component `k8s:Container:shop/postgres/postgres` · confidence *confirmed* · STRIDE T (Tampering)
-
-Container shop/postgres uses a version tag rather than a digest. Version tags are still mutable in most registries, so this is weaker than it looks, though far better than :latest.
-
-**Evidence**
-
-- image = postgres:15 (observed: `postgres:15`) — `app.yaml:115` at `spec.template.spec.containers[0].image`
-
-**Risk** — likelihood 2 × impact 3 = 6. Exposure: 3 hop(s) from the internet; blast radius 5; data sensitivity 4.
-
-- Reachable from the internet in 3 hops.
-- Handles personal or otherwise regulated data.
-- Has a path to a sensitive data store.
-
-**Remediation** — Resolve the tag to a digest in CI and commit the digest. *(effort: low, breaking risk: low)*
-
-**CWE** CWE-829 · **MITRE** T1195.002 · **NIST** CM-2
-
----
-
-### 6/25 · Workload has no liveness or readiness probe
-
-`TF-K8S-019` · **medium** · component `k8s:Container:shop/postgres/postgres` · confidence *confirmed* · STRIDE D (Denial of Service)
-
-Without probes, Kubernetes cannot tell a hung process from a healthy one. A deadlocked or resource-starved container keeps receiving traffic, which turns a partial failure into a user-visible outage and masks the early signal of an ongoing resource-exhaustion attack.
-
-**Evidence**
-
-- no livenessProbe (observed: `True`) — `app.yaml:115` at `spec.template.spec.containers[0].livenessProbe`
-- no readinessProbe (observed: `True`) — `app.yaml:115` at `spec.template.spec.containers[0].readinessProbe`
-
-**Risk** — likelihood 2 × impact 3 = 6. Exposure: 3 hop(s) from the internet; blast radius 5; data sensitivity 4.
-
-- Reachable from the internet in 3 hops.
-- Handles personal or otherwise regulated data.
-- Has a path to a sensitive data store.
-
-**Remediation** — Add liveness and readiness probes. *(effort: low, breaking risk: low)*
-
-```yaml
-readinessProbe:
-  httpGet: {path: /healthz, port: 8080}
-  initialDelaySeconds: 5
-livenessProbe:
-  httpGet: {path: /healthz, port: 8080}
-  initialDelaySeconds: 15
-```
-
-**CWE** CWE-703 · **MITRE** T1499 · **NIST** SI-4
-
----
+- `[ingest.drawio]` 4 shape(s) on 'Payments architecture' were typed by shape style rather than declared. Add `tfType=process|data_store|external_entity` to the shape, or prefix the label, to be explicit. — architecture.drawio

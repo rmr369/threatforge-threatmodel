@@ -1,0 +1,52 @@
+<mxfile host="app.diagrams.net" type="device">
+  <diagram id="arch" name="Payments architecture">
+    <mxGraphModel dx="1100" dy="700" grid="1" gridSize="10" page="1">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- a trust boundary drawn as a dashed rectangle, named conventionally -->
+        <mxCell id="dmz" value="Corporate DMZ" style="rounded=0;dashed=1;fillColor=none;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="240" y="40" width="480" height="320" as="geometry" />
+        </mxCell>
+
+        <!-- an actor: heuristic should read the umlActor shape -->
+        <mxCell id="cust" value="Customer" style="shape=umlActor;html=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="160" width="60" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- ellipse = process by convention -->
+        <mxCell id="api" value="&lt;b&gt;Checkout&lt;/b&gt;&lt;br&gt;API" style="ellipse;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="300" y="140" width="140" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- explicitly typed via a custom property, the recommended way -->
+        <object id="ledger" label="Ledger service" tfType="process">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+            <mxGeometry x="520" y="140" width="140" height="70" as="geometry" />
+          </mxCell>
+        </object>
+
+        <!-- datastore shape -->
+        <mxCell id="db" value="Card Vault" style="shape=datastore;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="520" y="250" width="140" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- a plain text annotation that must NOT become an asset -->
+        <mxCell id="note" value="Reviewed 2026-03 by the platform team" style="text;html=1;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="380" width="400" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="f1" value="checkout (https)" style="edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="cust" target="api">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f2" value="post ledger entry (http)" style="edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="api" target="ledger">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="f3" value="read card token (sql)" style="edgeStyle=orthogonalEdgeStyle;" edge="1" parent="1" source="ledger" target="db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

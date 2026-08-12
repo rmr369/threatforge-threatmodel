@@ -7,7 +7,7 @@
         "driver": {
           "name": "ThreatForge",
           "version": "1.0.0",
-          "informationUri": "https://github.com/your-org/threatforge",
+          "informationUri": "https://github.com/rmr369/threatforge-threatmodel",
           "rules": [
             {
               "id": "TF-CMP-001",
@@ -1196,6 +1196,39 @@
               }
             },
             {
+              "id": "TF-FLOW-002",
+              "name": "SensitiveDataCrossesATrustBoundary",
+              "shortDescription": {
+                "text": "Sensitive data crosses a trust boundary"
+              },
+              "fullDescription": {
+                "text": "Deployment shop/storefront -> ExternalEntity Stripe (payment provider) moves data classified as pci across a trust boundary. Each boundary crossing is a place where authentication, authorisation, encryption, and logging all need to be re-established -- assumptions that held on one side rarely hold on the other."
+              },
+              "help": {
+                "text": "Deployment shop/storefront -> ExternalEntity Stripe (payment provider) moves data classified as pci across a trust boundary. Each boundary crossing is a place where authentication, authorisation, encryption, and logging all need to be re-established -- assumptions that held on one side rarely hold on the other. **Remediation:** Enforce mTLS and explicit authorisation on this hop; log both sides. A service mesh (Istio, Linkerd) gives mTLS and per-hop authorisation policy without application changes, and produces the flow-level telemetry you need to detect abuse of this path. CWE: CWE-311, CWE-306 \u00b7 MITRE: T1557, T1041 \u00b7 NIST: SC-8, AC-4",
+                "markdown": "Deployment shop/storefront -> ExternalEntity Stripe (payment provider) moves data classified as pci across a trust boundary. Each boundary crossing is a place where authentication, authorisation, encryption, and logging all need to be re-established -- assumptions that held on one side rarely hold on the other.\n\n**Remediation:** Enforce mTLS and explicit authorisation on this hop; log both sides.\n\nA service mesh (Istio, Linkerd) gives mTLS and per-hop authorisation policy without application changes, and produces the flow-level telemetry you need to detect abuse of this path.\n\n\nCWE: CWE-311, CWE-306 \u00b7 MITRE: T1557, T1041 \u00b7 NIST: SC-8, AC-4"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "tags": [
+                  "boundary",
+                  "cwe/CWE-306",
+                  "cwe/CWE-311",
+                  "encryption",
+                  "mitre/T1041",
+                  "mitre/T1557",
+                  "pack:dataflow",
+                  "security",
+                  "stride/I",
+                  "stride/T"
+                ],
+                "security-severity": "3.6",
+                "precision": "high"
+              }
+            },
+            {
               "id": "TF-K8S-011",
               "name": "ContainerImageUsesAMutableTag",
               "shortDescription": {
@@ -1921,7 +1954,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -1948,7 +1981,7 @@
             "likelihood": 5,
             "impact": 5,
             "exposureHops": 3,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "E",
               "T",
@@ -1968,7 +2001,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -1995,7 +2028,7 @@
             "likelihood": 5,
             "impact": 5,
             "exposureHops": 2,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "E",
               "T",
@@ -2015,7 +2048,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -2042,7 +2075,7 @@
             "likelihood": 5,
             "impact": 5,
             "exposureHops": 3,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "I",
               "S"
@@ -2061,7 +2094,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -2088,7 +2121,7 @@
             "likelihood": 5,
             "impact": 5,
             "exposureHops": 1,
-            "blastRadius": 6,
+            "blastRadius": 7,
             "stride": [
               "I",
               "S",
@@ -2108,7 +2141,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -2135,7 +2168,7 @@
             "likelihood": 5,
             "impact": 5,
             "exposureHops": 1,
-            "blastRadius": 6,
+            "blastRadius": 7,
             "stride": [
               "I",
               "E",
@@ -2155,7 +2188,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -2198,7 +2231,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -2242,7 +2275,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -2286,7 +2319,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -2313,7 +2346,7 @@
             "likelihood": 4,
             "impact": 5,
             "exposureHops": 3,
-            "blastRadius": 5,
+            "blastRadius": 6,
             "stride": [
               "E"
             ],
@@ -2331,7 +2364,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -2358,7 +2391,7 @@
             "likelihood": 4,
             "impact": 5,
             "exposureHops": 3,
-            "blastRadius": 5,
+            "blastRadius": 6,
             "stride": [
               "E",
               "T"
@@ -2377,7 +2410,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -2401,7 +2434,7 @@
             "likelihood": 4,
             "impact": 5,
             "exposureHops": 2,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "S",
               "T",
@@ -2422,7 +2455,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -2446,7 +2479,7 @@
             "likelihood": 4,
             "impact": 5,
             "exposureHops": 2,
-            "blastRadius": 5,
+            "blastRadius": 6,
             "stride": [
               "S",
               "T",
@@ -2467,7 +2500,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -2494,7 +2527,7 @@
             "likelihood": 5,
             "impact": 4,
             "exposureHops": 1,
-            "blastRadius": 5,
+            "blastRadius": 6,
             "stride": [
               "S",
               "D",
@@ -2514,7 +2547,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -2603,7 +2636,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -2630,7 +2663,7 @@
             "likelihood": 4,
             "impact": 4,
             "exposureHops": 3,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "E"
             ],
@@ -2648,7 +2681,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -2675,7 +2708,7 @@
             "likelihood": 4,
             "impact": 4,
             "exposureHops": 3,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "E",
               "T"
@@ -2694,7 +2727,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -2721,7 +2754,7 @@
             "likelihood": 4,
             "impact": 4,
             "exposureHops": 3,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "E",
               "T"
@@ -2740,7 +2773,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -2767,7 +2800,7 @@
             "likelihood": 4,
             "impact": 4,
             "exposureHops": 2,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "S",
               "I",
@@ -2787,7 +2820,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -2814,7 +2847,7 @@
             "likelihood": 4,
             "impact": 4,
             "exposureHops": 2,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "I",
               "T",
@@ -2834,7 +2867,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -2861,7 +2894,7 @@
             "likelihood": 4,
             "impact": 4,
             "exposureHops": 3,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "E",
               "T"
@@ -2880,7 +2913,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -2904,7 +2937,7 @@
             "likelihood": 4,
             "impact": 4,
             "exposureHops": 1,
-            "blastRadius": 6,
+            "blastRadius": 7,
             "stride": [
               "S",
               "D"
@@ -2923,7 +2956,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "main.tf",
+                  "uri": "tf/main.tf",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -2968,7 +3001,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "main.tf",
+                  "uri": "tf/main.tf",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -3015,7 +3048,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "main.tf",
+                  "uri": "tf/main.tf",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -3061,7 +3094,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "main.tf",
+                  "uri": "tf/main.tf",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -3107,7 +3140,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -3191,7 +3224,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -3218,7 +3251,7 @@
             "likelihood": 3,
             "impact": 4,
             "exposureHops": 3,
-            "blastRadius": 5,
+            "blastRadius": 6,
             "stride": [
               "E"
             ],
@@ -3236,7 +3269,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -3263,7 +3296,7 @@
             "likelihood": 3,
             "impact": 4,
             "exposureHops": 3,
-            "blastRadius": 5,
+            "blastRadius": 6,
             "stride": [
               "T"
             ],
@@ -3281,7 +3314,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -3308,7 +3341,7 @@
             "likelihood": 3,
             "impact": 4,
             "exposureHops": 3,
-            "blastRadius": 5,
+            "blastRadius": 6,
             "stride": [
               "D"
             ],
@@ -3326,7 +3359,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -3353,7 +3386,7 @@
             "likelihood": 3,
             "impact": 4,
             "exposureHops": 2,
-            "blastRadius": 5,
+            "blastRadius": 6,
             "stride": [
               "E"
             ],
@@ -3371,7 +3404,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -3395,7 +3428,7 @@
             "likelihood": 3,
             "impact": 4,
             "exposureHops": 2,
-            "blastRadius": 5,
+            "blastRadius": 6,
             "stride": [
               "I",
               "E"
@@ -3414,7 +3447,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -3441,7 +3474,7 @@
             "likelihood": 4,
             "impact": 3,
             "exposureHops": 1,
-            "blastRadius": 6,
+            "blastRadius": 7,
             "stride": [
               "S",
               "D"
@@ -3460,7 +3493,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -3484,7 +3517,7 @@
             "likelihood": 4,
             "impact": 3,
             "exposureHops": 1,
-            "blastRadius": 6,
+            "blastRadius": 7,
             "stride": [
               "S",
               "T"
@@ -3503,7 +3536,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -3549,7 +3582,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "main.tf",
+                  "uri": "tf/main.tf",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -3713,6 +3746,98 @@
           }
         },
         {
+          "ruleId": "TF-FLOW-002",
+          "level": "warning",
+          "message": {
+            "text": "Sensitive data crosses a trust boundary on k8s:Deployment:shop/storefront--calls-->manual:payment-provider. Evidence: crosses boundary:node (observed: boundary:node). Risk 9/25 (medium); likelihood 3, impact 3. Fix: Enforce mTLS and explicit authorisation on this hop; log both sides."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "threatforge-overlay.yml",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 8,
+                  "snippet": {
+                    "text": "data_flows[0]"
+                  }
+                }
+              },
+              "logicalLocations": [
+                {
+                  "name": "k8s:Deployment:shop/storefront--calls-->manual:payment-provider",
+                  "kind": "data_flow"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "threatforge/v1": "TF-0F4B739E81"
+          },
+          "properties": {
+            "riskScore": 9,
+            "riskLevel": "medium",
+            "likelihood": 3,
+            "impact": 3,
+            "exposureHops": 2,
+            "blastRadius": 0,
+            "stride": [
+              "I",
+              "T"
+            ],
+            "component": "k8s:Deployment:shop/storefront--calls-->manual:payment-provider",
+            "confidence": "likely"
+          }
+        },
+        {
+          "ruleId": "TF-FLOW-002",
+          "level": "warning",
+          "message": {
+            "text": "Sensitive data crosses a trust boundary on k8s:StatefulSet:shop/postgres--calls-->manual:crm-saas. Evidence: crosses boundary:namespace:shop (observed: boundary:namespace:shop). Risk 9/25 (medium); likelihood 3, impact 3. Fix: Enforce mTLS and explicit authorisation on this hop; log both sides."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "threatforge-overlay.yml",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 8,
+                  "snippet": {
+                    "text": "data_flows[1]"
+                  }
+                }
+              },
+              "logicalLocations": [
+                {
+                  "name": "k8s:StatefulSet:shop/postgres--calls-->manual:crm-saas",
+                  "kind": "data_flow"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "threatforge/v1": "TF-39A26D2E9D"
+          },
+          "properties": {
+            "riskScore": 9,
+            "riskLevel": "medium",
+            "likelihood": 3,
+            "impact": 3,
+            "exposureHops": 2,
+            "blastRadius": 0,
+            "stride": [
+              "I",
+              "T"
+            ],
+            "component": "k8s:StatefulSet:shop/postgres--calls-->manual:crm-saas",
+            "confidence": "likely"
+          }
+        },
+        {
           "ruleId": "TF-K8S-010",
           "level": "warning",
           "message": {
@@ -3722,7 +3847,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -3749,7 +3874,7 @@
             "likelihood": 3,
             "impact": 3,
             "exposureHops": 3,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "T"
             ],
@@ -3767,7 +3892,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -3794,7 +3919,7 @@
             "likelihood": 3,
             "impact": 3,
             "exposureHops": 3,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "T"
             ],
@@ -3812,7 +3937,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -3839,7 +3964,7 @@
             "likelihood": 3,
             "impact": 3,
             "exposureHops": 3,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "T",
               "S"
@@ -3858,7 +3983,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -3885,7 +4010,7 @@
             "likelihood": 3,
             "impact": 3,
             "exposureHops": 3,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "T",
               "S"
@@ -3904,7 +4029,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -3931,7 +4056,7 @@
             "likelihood": 3,
             "impact": 3,
             "exposureHops": 3,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "D"
             ],
@@ -3949,7 +4074,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -3976,7 +4101,7 @@
             "likelihood": 3,
             "impact": 3,
             "exposureHops": 3,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "D"
             ],
@@ -3994,7 +4119,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -4021,7 +4146,7 @@
             "likelihood": 3,
             "impact": 3,
             "exposureHops": 2,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "E"
             ],
@@ -4039,7 +4164,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -4066,7 +4191,7 @@
             "likelihood": 3,
             "impact": 3,
             "exposureHops": 2,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "E",
               "S"
@@ -4085,7 +4210,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -4112,7 +4237,7 @@
             "likelihood": 3,
             "impact": 3,
             "exposureHops": 3,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "S",
               "I",
@@ -4132,7 +4257,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -4156,7 +4281,7 @@
             "likelihood": 3,
             "impact": 3,
             "exposureHops": 2,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "I",
               "E"
@@ -4202,7 +4327,7 @@
             "likelihood": 3,
             "impact": 3,
             "exposureHops": 3,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "E"
             ],
@@ -4220,7 +4345,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "main.tf",
+                  "uri": "tf/main.tf",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -4267,7 +4392,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "main.tf",
+                  "uri": "tf/main.tf",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -4355,7 +4480,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -4397,7 +4522,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -4424,7 +4549,7 @@
             "likelihood": 2,
             "impact": 3,
             "exposureHops": 3,
-            "blastRadius": 5,
+            "blastRadius": 6,
             "stride": [
               "T"
             ],
@@ -4442,7 +4567,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -4469,7 +4594,7 @@
             "likelihood": 2,
             "impact": 3,
             "exposureHops": 3,
-            "blastRadius": 5,
+            "blastRadius": 6,
             "stride": [
               "D"
             ],
@@ -4487,7 +4612,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -4514,7 +4639,7 @@
             "likelihood": 2,
             "impact": 3,
             "exposureHops": 2,
-            "blastRadius": 5,
+            "blastRadius": 6,
             "stride": [
               "D"
             ],
@@ -4616,7 +4741,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -4643,7 +4768,7 @@
             "likelihood": 2,
             "impact": 2,
             "exposureHops": 3,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "D"
             ],
@@ -4661,7 +4786,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -4688,7 +4813,7 @@
             "likelihood": 2,
             "impact": 2,
             "exposureHops": 3,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "D"
             ],
@@ -4706,7 +4831,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -4733,7 +4858,7 @@
             "likelihood": 2,
             "impact": 2,
             "exposureHops": 2,
-            "blastRadius": 4,
+            "blastRadius": 5,
             "stride": [
               "D"
             ],
@@ -4751,7 +4876,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "main.tf",
+                  "uri": "tf/main.tf",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -4838,7 +4963,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -4865,7 +4990,7 @@
             "likelihood": 1,
             "impact": 3,
             "exposureHops": 2,
-            "blastRadius": 5,
+            "blastRadius": 6,
             "stride": [
               "E"
             ],
@@ -4883,7 +5008,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -4928,7 +5053,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "main.tf",
+                  "uri": "tf/main.tf",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -5015,7 +5140,7 @@
             {
               "physicalLocation": {
                 "artifactLocation": {
-                  "uri": "app.yaml",
+                  "uri": "k8s/app.yaml",
                   "uriBaseId": "%SRCROOT%"
                 },
                 "region": {
@@ -5049,14 +5174,14 @@
         }
       ],
       "properties": {
-        "project": "vulnerable",
-        "assets": 28,
-        "flows": 16,
-        "attackPaths": 6,
+        "project": "demo",
+        "assets": 38,
+        "flows": 24,
+        "attackPaths": 9,
         "summary": {
           "critical": 17,
           "high": 22,
-          "medium": 22,
+          "medium": 24,
           "low": 12,
           "info": 0
         }

@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """
 ThreatForge command line interface.
 
@@ -10,6 +14,8 @@ ThreatForge command line interface.
     threatforge rules                       list loaded rules
     threatforge init                        write a starter .threatforge.yml
     threatforge migrate ./legacy            import stage7-dfd.json / architecture.json
+    threatforge serve .                     local web app with SLA + workflow
+    threatforge sla .                       SLA status from stored history
 """
 
 from __future__ import annotations
@@ -61,7 +67,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     s = common(sub.add_parser("scan", help="run the full pipeline and write reports"))
     s.add_argument("-o", "--out", help="output directory")
     s.add_argument("-f", "--format", action="append", dest="formats",
-                   choices=["json", "html", "sarif", "markdown", "mermaid", "docx"],
+                   choices=["json", "html", "sarif", "markdown", "mermaid", "thf", "tmt",
+                            "drawio", "docx"],
                    help="repeatable; default from config")
     s.add_argument("--fail-on", choices=["critical", "high", "medium", "low", "none"],
                    help="also run the gate and exit non-zero if breached")
@@ -69,6 +76,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                    help="restrict ingestors, repeatable")
     s.add_argument("--live", action="store_true", help="also collect from the live cluster")
     s.add_argument("--quiet", action="store_true")
+    s.add_argument("--track", action="store_true",
+                   help="record this scan in the history database "
+                        "(first-seen dates, SLA clocks, workflow state)")
+    s.add_argument("--db", help="path to the history database")
 
     g = common(sub.add_parser("gate", help="evaluate the CI gate only"))
     g.add_argument("--fail-on", choices=["critical", "high", "medium", "low", "none"])
@@ -90,6 +101,23 @@ def main(argv: Optional[List[str]] = None) -> int:
     df.add_argument("--reachable-only", action="store_true")
     df.add_argument("-o", "--out")
 
+    sv = common(sub.add_parser("serve", help="run the local web app"))
+    sv.add_argument("-p", "--port", type=int, help="default 8787")
+    sv.add_argument("--db", help="path to the SQLite database")
+    sv.add_argument("--no-browser", action="store_true")
+    sv.add_argument("--no-scan", action="store_true",
+                    help="skip the scan on startup and serve stored findings")
+    sv.add_argument("--fresh", action="store_true",
+                    help="delete stored findings, scans and history, then start "
+                         "empty; implies --no-scan")
+
+    sl = common(sub.add_parser("sla", help="SLA status from the stored history"))
+    sl.add_argument("--db", help="path to the SQLite database")
+    sl.add_argument("--json", action="store_true")
+    sl.add_argument("--breached-only", action="store_true")
+    sl.add_argument("--fail-on-breach", action="store_true",
+                    help="exit 1 if anything is past its SLA")
+
     r = sub.add_parser("rules", help="list rules")
     r.add_argument("--pack")
     r.add_argument("--json", action="store_true")
@@ -108,6 +136,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return {
             "scan": cmd_scan, "gate": cmd_gate, "diff": cmd_diff,
             "baseline": cmd_baseline, "dfd": cmd_dfd, "rules": cmd_rules,
+            "serve": cmd_serve, "sla": cmd_sla,
             "init": cmd_init, "migrate": cmd_migrate,
         }[args.cmd](args)
     except UsageError as exc:
@@ -179,16 +208,31 @@ def _load(args) -> tuple:
     return root, cfg, baseline
 
 
+def _resolve_out(explicit: Optional[str], configured: str, root: str) -> str:
+    """Where reports go.
+
+    -o is relative to the working directory; output.dir in config is relative to
+    the scan root. Getting this backwards produces paths like `target/target/out`
+    when someone types `-o target/out` from the parent directory.
+    """
+    if explicit:
+        return os.path.abspath(explicit)
+    return (configured if os.path.isabs(configured)
+            else os.path.join(root, configured))
+
+
 def cmd_scan(args) -> int:
     root, cfg, baseline = _load(args)
     quiet = getattr(args, "quiet", False)
     if not quiet:
         print(f"{C['b']}ThreatForge{C['x']} {VERSION} — scanning {root}")
-    model = pipeline.run(root, cfg, baseline, verbose=args.verbose)
 
-    out_dir = args.out or cfg["output"]["dir"]
-    if not os.path.isabs(out_dir):
-        out_dir = os.path.join(root, out_dir)
+    # An explicit -o is resolved against the working directory, like every other
+    # CLI tool. output.dir from config is resolved against the scan root, because
+    # it is a per-project setting that has to make sense from anywhere.
+    out_dir = _resolve_out(args.out, cfg["output"]["dir"], root)
+
+    model = pipeline.run(root, cfg, baseline, verbose=args.verbose, out_dir=out_dir)
     formats = args.formats or cfg["output"]["formats"]
     written = pipeline.write_outputs(
         model, out_dir, formats, cfg["output"].get("max_findings_in_doc", 60))
@@ -198,6 +242,18 @@ def cmd_scan(args) -> int:
         print(f"\n{C['b']}Reports{C['x']}")
         for name, path in written.items():
             print(f"  {C['d']}{path}{C['x']}")
+
+    if getattr(args, "track", False):
+        from .store import Store, default_db_path
+        store = Store(args.db or (cfg.get("serve", {}) or {}).get("database")
+                      or default_db_path(root))
+        delta = store.record_scan(model, root)
+        store.close()
+        if not quiet:
+            print(f"\n{C['b']}History{C['x']}  {len(delta['new'])} new · "
+                  f"{len(delta['resolved'])} resolved · "
+                  f"{len(delta['reopened'])} reopened   "
+                  f"{C['d']}{args.db or default_db_path(root)}{C['x']}")
 
     if args.fail_on:
         passed, report = gatemod.evaluate(model, cfg["gate"], baseline)
@@ -280,6 +336,77 @@ def cmd_dfd(args) -> int:
     else:
         print(out)
     return 0
+
+
+def cmd_serve(args) -> int:
+    from . import server
+    root, cfg, _ = _load(args)
+    serve_cfg = cfg.get("serve", {}) or {}
+    server.serve(
+        root,
+        port=args.port or serve_cfg.get("port", 8787),
+        db=args.db or serve_cfg.get("database"),
+        config=cfg,
+        open_browser=not args.no_browser and serve_cfg.get("open_browser", True),
+        # --fresh implies --no-scan: clearing the history and then immediately
+        # repopulating it would defeat the point of asking for a clean start.
+        scan_on_start=not (args.no_scan or args.fresh),
+        fresh=args.fresh,
+    )
+    return 0
+
+
+def cmd_sla(args) -> int:
+    from .sla import Policy, summarise
+    from .store import Store, default_db_path
+    root, cfg, _ = _load(args)
+    db = args.db or (cfg.get("serve", {}) or {}).get("database") or default_db_path(root)
+    if not os.path.exists(db):
+        raise UsageError(
+            f"no history database at {db}\n"
+            "  SLA tracking needs at least one recorded scan. Run:\n"
+            "    threatforge serve .      (records automatically)\n"
+            "  or scan once with the store enabled.")
+
+    store = Store(db)
+    policy = Policy.from_config(cfg)
+    rows = store.findings(policy=policy)
+    report = summarise(policy, rows)
+    store.close()
+
+    if args.json:
+        print(json.dumps(report, indent=2))
+        return 1 if (args.fail_on_breach and report["breached"]) else 0
+
+    b = report["buckets"]
+    print(f"\n{C['b']}SLA{C['x']}  as of {report['as_of']}  ·  "
+          f"database {C['d']}{db}{C['x']}")
+    print(f"  compliance : {report['compliance_pct']}% "
+          f"({report['open'] - report['breached']}/{report['open']} open within SLA)")
+    print(f"  breached   : {C['critical'] if report['breached'] else C['ok']}"
+          f"{report['breached']}{C['x']}")
+    print(f"  due soon   : {C['medium']}{b['due_soon']}{C['x']}   "
+          f"on track: {C['ok']}{b['on_track']}{C['x']}   closed: {b['closed']}")
+    if report["median_resolution_days"] is not None:
+        print(f"  median fix : {report['median_resolution_days']} days")
+
+    print(f"\n{C['b']}Policy{C['x']}  " + "  ".join(
+        f"{k}={'none' if v is None else str(v) + 'd'}"
+        for k, v in report["policy"].items()))
+
+    if report["overdue"]:
+        print(f"\n{C['b']}Overdue{C['x']}")
+        for o in report["overdue"][:20]:
+            print(f"  {C['critical']}{o['days_overdue']:>4}d over{C['x']} "
+                  f"{o['risk_level']:<8} {o['rule_id']:<14} {o['title'][:44]}")
+            print(f"       {C['d']}{o['component']} · owner {o['owner']}"
+                  f" · due {o['due_date']}{C['x']}")
+        if len(report["overdue"]) > 20:
+            print(f"  … and {len(report['overdue']) - 20} more")
+    elif not args.breached_only:
+        print(f"\n  {C['ok']}Nothing overdue.{C['x']}")
+    print()
+    return 1 if (args.fail_on_breach and report["breached"]) else 0
 
 
 def cmd_rules(args) -> int:

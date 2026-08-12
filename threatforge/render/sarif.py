@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """
 SARIF 2.1.0 output for GitHub Code Scanning (and any other SARIF consumer).
 
@@ -113,7 +117,7 @@ def render(model: ThreatModel, tool_version: str = "1.0.0") -> str:
             "tool": {"driver": {
                 "name": "ThreatForge",
                 "version": tool_version,
-                "informationUri": "https://github.com/your-org/threatforge",
+                "informationUri": "https://github.com/rmr369/threatforge-threatmodel",
                 "rules": list(rules.values()),
             }},
             "results": results,

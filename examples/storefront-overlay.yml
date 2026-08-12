@@ -1,0 +1,398 @@
+# Sample application architecture, built for ThreatForge.
+metadata:
+  title: Storefront reference architecture
+components:
+  - id: "browser"
+    type: external_entity
+    name: "Customer browser"
+    trust_zone: external
+    component_type: "browser"
+    attributes:
+      "authenticates_itself": false
+      "entity_type": "human"
+      "controlled_by_us": false
+  - id: "mobile"
+    type: external_entity
+    name: "Mobile app"
+    trust_zone: external
+    component_type: "mobile_app"
+    attributes:
+      "authenticates_itself": true
+      "entity_type": "device"
+      "controlled_by_us": false
+  - id: "admin"
+    type: external_entity
+    name: "Internal operator"
+    trust_zone: internal
+    component_type: "human_actor"
+    attributes:
+      "authenticates_itself": true
+      "entity_type": "human"
+      "controlled_by_us": true
+  - id: "cdn"
+    type: process
+    name: "CDN"
+    trust_zone: dmz
+    component_type: "cdn"
+    attributes:
+      "accepts_input_from": "any_remote"
+      "sanitizes_input": true
+      "running_as": "service_account"
+      "logs_security_events": true
+  - id: "waf"
+    type: process
+    name: "WAF"
+    trust_zone: dmz
+    component_type: "waf"
+    attributes:
+      "accepts_input_from": "any_remote"
+      "sanitizes_input": true
+      "running_as": "service_account"
+      "logs_security_events": true
+  - id: "gateway"
+    type: process
+    name: "API gateway"
+    trust_zone: dmz
+    component_type: "api_gateway"
+    attributes:
+      "accepts_input_from": "any_remote"
+      "implements_authn": true
+      "implements_authz": true
+      "sanitizes_input": true
+      "running_as": "service_account"
+      "logs_security_events": true
+      "isolation_level": "container"
+      "code_type": "managed"
+  - id: "adminui"
+    type: process
+    name: "Admin console"
+    trust_zone: internal
+    component_type: "admin_console"
+    attributes:
+      "accepts_input_from": "any_remote"
+      "running_as": "administrator"
+      "implements_authn": true
+      "implements_authz": false
+      "sanitizes_input": true
+      "logs_security_events": false
+  - id: "web"
+    type: process
+    name: "Storefront web app"
+    trust_zone: internal
+    component_type: "web_server"
+    attributes:
+      "accepts_input_from": "authenticated_users"
+      "sanitizes_input": true
+      "sanitizes_output": true
+      "running_as": "least_privilege"
+      "implements_authn": true
+      "logs_security_events": true
+      "isolation_level": "container"
+      "code_type": "managed"
+  - id: "orders"
+    type: process
+    name: "Orders API"
+    trust_zone: internal
+    component_type: "microservice"
+    data: ["pii"]
+    attributes:
+      "accepts_input_from": "any_remote"
+      "sanitizes_input": false
+      "implements_authn": true
+      "implements_authz": true
+      "running_as": "service_account"
+      "logs_security_events": true
+      "handles_secrets": true
+      "isolation_level": "container"
+      "code_type": "managed"
+  - id: "worker"
+    type: process
+    name: "Payments worker"
+    trust_zone: internal
+    component_type: "background_worker"
+    data: ["pci"]
+    attributes:
+      "accepts_input_from": "internal_services"
+      "sanitizes_input": true
+      "running_as": "service_account"
+      "implements_authn": true
+      "implements_authz": true
+      "logs_security_events": true
+      "handles_secrets": true
+      "isolation_level": "container"
+  - id: "idp"
+    type: process
+    name: "Identity provider"
+    trust_zone: restricted
+    component_type: "identity_provider"
+    attributes:
+      "accepts_input_from": "any_remote"
+      "implements_authn": true
+      "implements_authz": true
+      "sanitizes_input": true
+      "running_as": "service_account"
+      "logs_security_events": false
+      "isolation_level": "vm"
+  - id: "postgres"
+    type: data_store
+    name: "Orders database"
+    trust_zone: restricted
+    component_type: "sql_db"
+    data: ["pii"]
+    attributes:
+      "store_type": "sql"
+      "encrypted": true
+      "backup": true
+      "signed": false
+      "stores_credentials": false
+      "write_access": true
+      "shared": false
+      "removable_storage": false
+      "stores_log_data": false
+  - id: "cache"
+    type: data_store
+    name: "Session cache"
+    trust_zone: internal
+    component_type: "cache"
+    data: ["secret"]
+    attributes:
+      "store_type": "cache"
+      "stores_credentials": true
+      "encrypted": false
+      "shared": true
+      "backup": false
+      "write_access": true
+      "signed": false
+      "removable_storage": false
+      "stores_log_data": false
+  - id: "receipts"
+    type: data_store
+    name: "Receipt archive"
+    trust_zone: restricted
+    component_type: "object_storage"
+    data: ["pci"]
+    attributes:
+      "store_type": "blob"
+      "encrypted": true
+      "backup": false
+      "shared": false
+      "stores_credentials": false
+      "write_access": true
+      "signed": true
+      "removable_storage": false
+      "stores_log_data": false
+  - id: "vault"
+    type: data_store
+    name: "Secrets manager"
+    trust_zone: restricted
+    component_type: "secrets_manager"
+    data: ["secret"]
+    attributes:
+      "store_type": "other"
+      "stores_credentials": true
+      "encrypted": true
+      "backup": true
+      "shared": false
+      "signed": true
+      "write_access": true
+      "removable_storage": false
+      "stores_log_data": false
+  - id: "stripe"
+    type: external_entity
+    name: "Payment provider"
+    trust_zone: partner
+    component_type: "payment_provider"
+    data: ["pci"]
+    attributes:
+      "authenticates_itself": true
+      "entity_type": "service"
+      "controlled_by_us": false
+flows:
+  - from: "browser"
+    to: "cdn"
+    name: "page request"
+    protocol: "https"
+    encrypted: true
+    attributes:
+      "provides_confidentiality": true
+      "provides_integrity": true
+      "physical_network": "internet"
+      "contains_cookies": true
+      "forgery_protection": "samesite"
+      "payload_format": "form"
+      "source_authenticated": false
+      "destination_authenticated": true
+      "rate_limited": true
+  - from: "mobile"
+    to: "gateway"
+    name: "api call"
+    protocol: "https"
+    encrypted: true
+    attributes:
+      "provides_confidentiality": true
+      "provides_integrity": true
+      "physical_network": "cellular"
+      "payload_format": "json"
+      "source_authenticated": true
+      "destination_authenticated": true
+      "rate_limited": true
+      "contains_cookies": false
+  - from: "admin"
+    to: "adminui"
+    name: "administration"
+    protocol: "https"
+    encrypted: true
+    attributes:
+      "provides_confidentiality": true
+      "provides_integrity": true
+      "physical_network": "vpn"
+      "source_authenticated": true
+      "destination_authenticated": true
+      "contains_cookies": true
+      "forgery_protection": "none"
+      "payload_format": "form"
+  - from: "cdn"
+    to: "waf"
+    name: "origin fetch"
+    protocol: "https"
+    encrypted: true
+    attributes:
+      "provides_confidentiality": true
+      "provides_integrity": true
+      "physical_network": "wire"
+  - from: "waf"
+    to: "gateway"
+    name: "filtered traffic"
+    protocol: "https"
+    encrypted: true
+    attributes:
+      "provides_confidentiality": true
+      "provides_integrity": true
+      "physical_network": "wire"
+  - from: "gateway"
+    to: "web"
+    name: "route"
+    protocol: "https"
+    encrypted: true
+    attributes:
+      "provides_confidentiality": true
+      "provides_integrity": true
+      "source_authenticated": true
+      "destination_authenticated": true
+      "physical_network": "wire"
+  - from: "gateway"
+    to: "orders"
+    name: "order api"
+    protocol: "https"
+    encrypted: true
+    attributes:
+      "provides_confidentiality": true
+      "provides_integrity": true
+      "source_authenticated": true
+      "destination_authenticated": true
+      "payload_format": "json"
+      "rate_limited": true
+  - from: "web"
+    to: "idp"
+    name: "authenticate"
+    protocol: "https"
+    encrypted: true
+    attributes:
+      "provides_confidentiality": true
+      "provides_integrity": true
+      "source_authenticated": true
+      "destination_authenticated": true
+  - from: "orders"
+    to: "postgres"
+    name: "read and write orders"
+    protocol: "tls"
+    encrypted: true
+    attributes:
+      "provides_confidentiality": true
+      "provides_integrity": true
+      "source_authenticated": true
+      "destination_authenticated": true
+  - from: "orders"
+    to: "cache"
+    name: "session lookup"
+    protocol: "redis"
+    encrypted: false
+    attributes:
+      "provides_confidentiality": false
+      "provides_integrity": false
+      "physical_network": "wire"
+      "source_authenticated": false
+      "destination_authenticated": false
+  - from: "orders"
+    to: "vault"
+    name: "fetch credentials"
+    protocol: "https"
+    encrypted: true
+    attributes:
+      "provides_confidentiality": true
+      "provides_integrity": true
+      "source_authenticated": true
+      "destination_authenticated": true
+  - from: "orders"
+    to: "worker"
+    name: "queue payment"
+    protocol: "amqp"
+    encrypted: true
+    attributes:
+      "provides_confidentiality": true
+      "provides_integrity": true
+      "source_authenticated": true
+      "destination_authenticated": true
+  - from: "worker"
+    to: "stripe"
+    name: "charge card"
+    protocol: "https"
+    encrypted: true
+    attributes:
+      "provides_confidentiality": true
+      "provides_integrity": true
+      "physical_network": "internet"
+      "source_authenticated": true
+      "destination_authenticated": true
+      "payload_format": "json"
+  - from: "worker"
+    to: "receipts"
+    name: "store receipt"
+    protocol: "https"
+    encrypted: true
+    attributes:
+      "provides_confidentiality": true
+      "provides_integrity": true
+      "source_authenticated": true
+      "destination_authenticated": true
+  - from: "adminui"
+    to: "postgres"
+    name: "operator queries"
+    protocol: "tls"
+    encrypted: true
+    attributes:
+      "provides_confidentiality": true
+      "provides_integrity": true
+      "source_authenticated": true
+      "destination_authenticated": true
+trust_boundaries:
+  - id: "internet"
+    name: "Internet"
+    trust_level: 0
+    contains: ["manual:browser", "manual:mobile"]
+  - id: "dmz"
+    name: "DMZ"
+    trust_level: 30
+    contains: ["manual:cdn", "manual:waf", "manual:gateway", "manual:adminui"]
+  - id: "app-tier"
+    name: "Application tier"
+    trust_level: 70
+    contains: ["manual:web", "manual:orders", "manual:worker", "manual:idp"]
+  - id: "data-tier"
+    name: "Data tier"
+    trust_level: 85
+    contains: ["manual:postgres", "manual:cache", "manual:receipts", "manual:vault"]
+  - id: "partner"
+    name: "Partner zone"
+    trust_level: 40
+    contains: ["manual:stripe"]

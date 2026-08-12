@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 pack: dataflow
 description: >
   Rules that fire on edges rather than nodes. These are the classic threat-modelling
@@ -139,3 +143,73 @@ rules:
       breaking_risk: low
     references: {}
     tags: [coverage, verify-manually]
+
+  - id: TF-FLOW-006
+    title: Plaintext traffic crosses a trust boundary
+    severity: high
+    stride: [I, T, S]
+    confidence: confirmed
+    applies_to: {element: [data_flow]}
+    when:
+      all:
+        - {fact: flow.crosses_boundary, op: is_true}
+        - {fact: flow.encrypted, op: is_false}
+        - {fact: flow.from_internet, op: is_false}
+        # A meaningful trust gain, not merely a different node.
+        - {fact: flow.trust_gain, op: gte, value: 20}
+        # Traffic between distinct components, not internal plumbing. A Service
+        # routing to its own Pods crosses a node boundary in every cluster on
+        # earth; firing on that would bury the partner link this rule exists to
+        # find. `runs`, `mounts`, `assumes` and `granted` are structure, not
+        # traffic, and are excluded for the same reason.
+        - {fact: flow.kind, op: in, value: [calls, external-access, connects, publishes, subscribes]}
+    description: >
+      {{ component }} crosses a trust boundary without transport encryption. The
+      boundary exists because the two sides have different trust assumptions; sending
+      the traffic in the clear means anyone with access to the network between them
+      reads and modifies it. This is distinct from TF-FLOW-001 only in that the
+      untrusted network is not the public internet -- a partner link, a second VPC, or
+      an on-premises segment carries the same exposure with fewer eyes on it.
+    evidence:
+      - {fact: flow.protocol, text: "protocol = {{ flow.protocol }}, encrypted = false", expected: "TLS"}
+      - {fact: flow.boundary_crossed, text: "crosses {{ flow.boundary_crossed }}"}
+    remediation:
+      summary: Terminate TLS on this hop, or place it inside a mesh that enforces mTLS.
+      guidance: >
+        If the far end cannot terminate TLS, the honest options are a tunnel you
+        control or an explicit, recorded acceptance of the risk. Marking the flow
+        encrypted in the model without changing the wire protocol only hides it.
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-319]
+      mitre: [T1040, T1557]
+      nist: [SC-8, AC-4]
+      owasp: [K05]
+    tags: [transport, boundary]
+
+  - id: TF-FLOW-007
+    title: Plaintext traffic from an untrusted source
+    severity: high
+    stride: [I, S]
+    confidence: confirmed
+    applies_to: {element: [data_flow]}
+    when:
+      all:
+        - {fact: flow.plaintext_from_untrusted, op: is_true}
+        - {fact: flow.crosses_boundary, op: is_false}
+    description: >
+      {{ component }} originates at an external entity and is unencrypted, but no trust
+      boundary was recorded between them. Either the boundary is missing from the model
+      or the external system sits inside your perimeter -- both are worth resolving,
+      because reachability and blast radius are computed from those boundaries.
+    evidence:
+      - {fact: flow.source_element, text: "source is an external entity, encrypted = false"}
+    remediation:
+      summary: Encrypt the hop, and declare the boundary the external system sits behind.
+      effort: medium
+      breaking_risk: low
+    references:
+      cwe: [CWE-319]
+      nist: [SC-8]
+    tags: [transport, boundary, verify-manually]

@@ -1,0 +1,109 @@
+{
+ "format": "threatforge-model",
+ "version": 1,
+ "generated": "2026-08-12T10:27:13",
+ "project": "Minimal web application",
+ "source": {
+  "label": "sample",
+  "kind": "path",
+  "root": ""
+ },
+ "overlay": "# A minimal application: customer, web app, API, and two stores.\nmetadata:\n  title: Minimal web application\ncomponents:\n  - id: \"user\"\n    type: external_entity\n    name: \"Customer\"\n    trust_zone: external\n    component_type: \"browser\"\n    attributes:\n      \"authenticates_itself\": false\n      \"entity_type\": \"human\"\n      \"controlled_by_us\": false\n  - id: \"web\"\n    type: process\n    name: \"Web application\"\n    trust_zone: dmz\n    component_type: \"web_server\"\n    attributes:\n      \"accepts_input_from\": \"any_remote\"\n      \"sanitizes_input\": true\n      \"implements_authn\": true\n      \"implements_authz\": true\n      \"running_as\": \"least_privilege\"\n      \"logs_security_events\": true\n      \"isolation_level\": \"container\"\n      \"code_type\": \"managed\"\n      \"sanitizes_output\": true\n      \"handles_secrets\": false\n  - id: \"api\"\n    type: process\n    name: \"Orders API\"\n    trust_zone: internal\n    component_type: \"microservice\"\n    data: [\"pii\"]\n    attributes:\n      \"accepts_input_from\": \"any_remote\"\n      \"sanitizes_input\": false\n      \"implements_authn\": true\n      \"implements_authz\": true\n      \"running_as\": \"service_account\"\n      \"logs_security_events\": true\n      \"isolation_level\": \"container\"\n      \"code_type\": \"managed\"\n      \"sanitizes_output\": true\n      \"handles_secrets\": true\n  - id: \"db\"\n    type: data_store\n    name: \"Orders database\"\n    trust_zone: restricted\n    component_type: \"sql_db\"\n    data: [\"pii\"]\n    attributes:\n      \"store_type\": \"sql\"\n      \"encrypted\": true\n      \"backup\": true\n      \"signed\": false\n      \"stores_credentials\": false\n      \"write_access\": true\n      \"shared\": false\n      \"removable_storage\": false\n      \"stores_log_data\": false\n  - id: \"cache\"\n    type: data_store\n    name: \"Session store\"\n    trust_zone: internal\n    component_type: \"cache\"\n    data: [\"secret\"]\n    attributes:\n      \"store_type\": \"cache\"\n      \"stores_credentials\": true\n      \"encrypted\": false\n      \"backup\": true\n      \"shared\": false\n      \"write_access\": true\n      \"signed\": false\n      \"removable_storage\": false\n      \"stores_log_data\": false\nflows:\n  - from: \"user\"\n    to: \"web\"\n    name: \"browse and order\"\n    protocol: \"https\"\n    encrypted: true\n    attributes:\n      \"provides_confidentiality\": true\n      \"provides_integrity\": true\n      \"physical_network\": \"internet\"\n      \"contains_cookies\": true\n      \"forgery_protection\": \"samesite\"\n      \"payload_format\": \"form\"\n      \"source_authenticated\": false\n      \"destination_authenticated\": true\n      \"rate_limited\": true\n  - from: \"web\"\n    to: \"api\"\n    name: \"place order\"\n    protocol: \"https\"\n    encrypted: true\n    attributes:\n      \"provides_confidentiality\": true\n      \"provides_integrity\": true\n      \"physical_network\": \"wire\"\n      \"source_authenticated\": true\n      \"destination_authenticated\": true\n      \"payload_format\": \"json\"\n      \"rate_limited\": true\n      \"contains_cookies\": false\n  - from: \"api\"\n    to: \"db\"\n    name: \"read and write orders\"\n    protocol: \"tls\"\n    encrypted: true\n    attributes:\n      \"provides_confidentiality\": true\n      \"provides_integrity\": true\n      \"physical_network\": \"wire\"\n      \"source_authenticated\": true\n      \"destination_authenticated\": true\n  - from: \"web\"\n    to: \"cache\"\n    name: \"session lookup\"\n    protocol: \"redis\"\n    encrypted: false\n    attributes:\n      \"provides_confidentiality\": false\n      \"provides_integrity\": false\n      \"physical_network\": \"wire\"\n      \"source_authenticated\": false\n      \"destination_authenticated\": false\ntrust_boundaries:\n  - id: \"internet-zone\"\n    name: \"Internet\"\n    trust_level: 0\n    contains: [\"manual:user\"]\n  - id: \"app-zone\"\n    name: \"Application\"\n    trust_level: 70\n    contains: [\"manual:web\", \"manual:api\"]\n  - id: \"data-zone\"\n    name: \"Data\"\n    trust_level: 85\n    contains: [\"manual:db\", \"manual:cache\"]\n",
+ "layout": {
+  "nodes": {
+   "manual:user": {
+    "x": 60,
+    "y": 200,
+    "w": 170,
+    "h": 60
+   },
+   "manual:web": {
+    "x": 330,
+    "y": 200,
+    "w": 170,
+    "h": 60
+   },
+   "manual:api": {
+    "x": 600,
+    "y": 200,
+    "w": 170,
+    "h": 60
+   },
+   "manual:db": {
+    "x": 870,
+    "y": 120,
+    "w": 170,
+    "h": 60
+   },
+   "manual:cache": {
+    "x": 870,
+    "y": 280,
+    "w": 170,
+    "h": 60
+   },
+   "ext:internet": {
+    "x": -220,
+    "y": 200,
+    "w": 170,
+    "h": 60
+   },
+   "ext:internal-user": {
+    "x": -220,
+    "y": 320,
+    "w": 170,
+    "h": 60
+   }
+  },
+  "bounds": {
+   "boundary:manual:internet-zone": {
+    "x": 30,
+    "y": 156,
+    "w": 230,
+    "h": 134,
+    "name": "Internet",
+    "trust_level": 0,
+    "hand": true
+   },
+   "boundary:manual:app-zone": {
+    "x": 300,
+    "y": 156,
+    "w": 500,
+    "h": 134,
+    "name": "Application",
+    "trust_level": 70,
+    "hand": true
+   },
+   "boundary:manual:data-zone": {
+    "x": 840,
+    "y": 76,
+    "w": 230,
+    "h": 294,
+    "name": "Data",
+    "trust_level": 85,
+    "hand": true
+   }
+  }
+ },
+ "document": {
+  "fields": {
+   "title": "Minimal web application",
+   "owner": "Platform Security",
+   "reviewer": "",
+   "stakeholders": "Web engineering",
+   "scope": "A customer-facing web application, its order API, and the two stores behind it.",
+   "out_of_scope": "Everything else. This model exists to demonstrate the shape of a threat model, not to cover a real estate.",
+   "assumptions": "TLS terminates at the web application\nThe session store is on a private network segment",
+   "dependencies": "Managed Postgres",
+   "data_classification": "PII",
+   "compliance": "UK GDPR"
+  },
+  "answers": {
+   "authn": "Session cookie issued by the web application after password login.",
+   "transit": "HTTPS from the customer, TLS to the database. The session lookup is plaintext.",
+   "rest": "The database is encrypted. The session store is not.",
+   "input": "Validated in the web application, not in the Orders API."
+  }
+ },
+ "triage": [],
+ "summary": {}
+}

@@ -1,0 +1,173 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+pack: boundary
+description: >
+  Rules that fire on trust boundaries -- the perimeter itself rather than the
+  things inside it. Boundaries were invisible to the engine until now: only
+  assets and flows were ever evaluated, so nothing could say "this perimeter is
+  crossed by four unencrypted flows" or "this boundary separates the internet
+  from your credential store and nothing enforces it".
+
+  A boundary is the one place in a threat model where the question is about the
+  *shape* of the system rather than any single component. Every fact here is
+  counted from the graph -- members, crossings, how many of those are plaintext
+  or unauthenticated -- so each finding cites arithmetic rather than an opinion.
+
+  These rules are per-boundary, not per-crossing. A perimeter with forty
+  plaintext flows is one problem to solve, not forty; the flow-level rules
+  already name the individual hops.
+
+rules:
+
+  - id: TF-BND-001
+    title: Perimeter carries unencrypted traffic
+    severity: high
+    stride: [I, T]
+    confidence: confirmed
+    applies_to: {element: [trust_boundary]}
+    when:
+      all:
+        - {fact: boundary.plaintext_crossings, op: gte, value: 1}
+        - {fact: boundary.trust_level, op: gte, value: 20}
+    description: >
+      {{ component }} is crossed by {{ boundary.plaintext_crossings }} flow(s)
+      declared unencrypted, out of {{ boundary.crossings }} crossings in total.
+      A trust boundary exists because the two sides make different assumptions;
+      traffic that crosses it in the clear hands those assumptions to anyone on
+      the network in between.
+    evidence:
+      - {fact: boundary.plaintext_crossings, text: "{{ boundary.plaintext_crossings }} of {{ boundary.crossings }} crossings are plaintext", expected: "0"}
+    remediation:
+      summary: Terminate TLS on every crossing, or put the boundary inside a mesh that enforces mTLS.
+      guidance: >
+        Fixing this at the boundary is usually cheaper than fixing each flow:
+        one ingress policy or one mesh configuration covers every hop that
+        crosses it, and it keeps covering the hops added next quarter.
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-319]
+      mitre: [T1040]
+      nist: [SC-8, AC-4]
+      owasp: [A02]
+    tags: [boundary, transport]
+
+  - id: TF-BND-002
+    title: Internet-reachable boundary holds sensitive data
+    severity: critical
+    stride: [I, E]
+    confidence: confirmed
+    applies_to: {element: [trust_boundary]}
+    when:
+      all:
+        - {fact: boundary.exposed_and_sensitive, op: is_true}
+        - {fact: boundary.trust_level, op: gte, value: 40}
+        # Two hops or fewer. Further than that and the components in between
+        # are doing the work a boundary is supposed to do, and calling it an
+        # exposure would punish a design that is actually layered.
+        - {fact: boundary.min_sensitive_hops, op: lte, value: 2}
+    description: >
+      {{ boundary.exposed_sensitive_members }} component(s) inside
+      {{ component }} both hold sensitive data and are reachable from the
+      internet, the nearest at {{ boundary.min_sensitive_hops }} hop(s). This is
+      not "the boundary contains a database somewhere" -- it is the data itself
+      sitting within reach of the outside.
+    evidence:
+      - {fact: boundary.exposed_sensitive_members, text: "{{ boundary.exposed_sensitive_members }} component(s) both internet-reachable and holding {{ boundary.data_classes }}", expected: "0"}
+    remediation:
+      summary: Move the sensitive component off the reachable path, or terminate that path before it.
+      guidance: >
+        A DMZ is not a naming convention. If the same perimeter contains both
+        the front door and the crown jewels, compromising the door is
+        compromising the jewels, and no amount of internal policy changes that.
+      effort: high
+      breaking_risk: high
+    references:
+      cwe: [CWE-668, CWE-1188]
+      mitre: [T1190, T1210]
+      nist: [SC-7, AC-4]
+      owasp: [A01]
+    tags: [boundary, segmentation]
+
+  - id: TF-BND-003
+    title: Boundary accepts unauthenticated traffic
+    severity: high
+    stride: [S, E]
+    confidence: confirmed
+    applies_to: {element: [trust_boundary]}
+    when:
+      all:
+        - {fact: boundary.unauthenticated_crossings, op: gte, value: 1}
+        - {fact: boundary.trust_level, op: gte, value: 40}
+    description: >
+      {{ component }} accepts {{ boundary.unauthenticated_crossings }} crossing(s)
+      that declare no authentication. Trust is being granted on the basis of
+      network position alone, which is exactly the assumption an attacker who
+      reaches that network no longer has to satisfy.
+    evidence:
+      - {fact: boundary.unauthenticated_crossings, text: "{{ boundary.unauthenticated_crossings }} unauthenticated crossing(s)"}
+    remediation:
+      summary: Authenticate every caller at the boundary, not only at the edge of the estate.
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-306, CWE-290]
+      mitre: [T1078]
+      nist: [IA-2, AC-3]
+      owasp: [A07]
+    tags: [boundary, identity]
+
+  - id: TF-BND-004
+    title: Highly permeable trust boundary
+    severity: medium
+    stride: [E]
+    confidence: likely
+    applies_to: {element: [trust_boundary]}
+    when:
+      all:
+        - {fact: boundary.crossings, op: gte, value: 12}
+        - {fact: boundary.trust_level, op: gte, value: 40}
+    description: >
+      {{ component }} is crossed by {{ boundary.crossings }} flows. A boundary
+      with this many openings is closer to a label than a control: each crossing
+      is a place where the trust decision has to be made again, and the
+      likelihood that all of them are correct falls with every one added.
+    evidence:
+      - {fact: boundary.crossings, text: "{{ boundary.crossings }} distinct crossings"}
+    remediation:
+      summary: Funnel crossings through a small number of reviewed entry points.
+      guidance: >
+        The count matters more than any single crossing. Consolidating twenty
+        ad-hoc paths into two gateways does not remove the traffic; it makes the
+        trust decision reviewable in two places instead of twenty.
+      effort: high
+      breaking_risk: medium
+    references:
+      cwe: [CWE-1008]
+      nist: [SC-7]
+    tags: [boundary, segmentation, verify-manually]
+
+  - id: TF-BND-005
+    title: Trust boundary contains nothing
+    severity: info
+    stride: []
+    confidence: confirmed
+    applies_to: {element: [trust_boundary]}
+    when:
+      all:
+        - {fact: boundary.empty, op: is_true}
+    description: >
+      {{ component }} has no components inside it. Either it was drawn around
+      something that has since moved, or it was never finished. An empty
+      boundary on a diagram reads as protection that is not there, which is
+      worse than no boundary at all.
+    evidence:
+      - {fact: boundary.members, text: "0 components inside"}
+    remediation:
+      summary: Put the components inside it, or remove it from the diagram.
+      effort: low
+      breaking_risk: low
+    references: {}
+    tags: [boundary, coverage]

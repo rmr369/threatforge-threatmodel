@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """
 Pipeline orchestration.
 
@@ -20,7 +24,7 @@ from . import config as cfgmod
 from . import controls, risk
 from .graph import (build_boundaries, build_relationships, compute_reachability,
                     find_paths)
-from .ingest import build as build_ingestors
+from .ingest import build as build_ingestors, set_output_exclusions
 from .model import ThreatModel
 from .rules.engine import PACK_DIR, RuleEngine
 
@@ -30,8 +34,17 @@ STAGES = ["ingest", "relate", "boundaries", "reachability", "facts",
 
 def run(root: str, config: Optional[Dict[str, Any]] = None,
         baseline: Optional[Dict[str, Any]] = None,
-        verbose: bool = False) -> ThreatModel:
+        verbose: bool = False, out_dir: Optional[str] = None) -> ThreatModel:
     cfg = config or cfgmod.load(root)
+
+    # Never read our own output. Several output formats (.thf, .json) are also
+    # valid input formats, so a report left inside the scanned tree would be
+    # re-ingested on the next run and quietly change the results.
+    configured = out_dir or (cfg.get("output", {}) or {}).get("dir") or "threatforge-out"
+    set_output_exclusions([
+        configured if os.path.isabs(configured) else os.path.join(root, configured),
+        os.path.join(root, "threatforge-out"),
+    ])
     model = ThreatModel(project=cfg.get("project") or os.path.basename(os.path.abspath(root)))
     model.metadata["root"] = os.path.abspath(root)
     model.metadata["config_file"] = cfg.get("_config_file")
@@ -111,9 +124,9 @@ def run(root: str, config: Optional[Dict[str, Any]] = None,
 def write_outputs(model: ThreatModel, out_dir: str,
                   formats: Optional[List[str]] = None,
                   max_findings_in_doc: int = 60) -> Dict[str, str]:
-    from .render import docx_report, html, markdown, mermaid, sarif
+    from .render import docx_report, drawio, html, markdown, mermaid, sarif, thf, tmt
 
-    formats = formats or ["json", "html", "sarif", "markdown", "mermaid"]
+    formats = formats or ["json", "html", "sarif", "markdown", "mermaid", "thf"]
     os.makedirs(out_dir, exist_ok=True)
     written: Dict[str, str] = {}
 
@@ -138,6 +151,12 @@ def write_outputs(model: ThreatModel, out_dir: str,
         put("trust-boundaries.mmd", mermaid.render_boundary_map(model))
         if model.attack_paths:
             put("attack-path-1.mmd", mermaid.render_attack_path(model, 0))
+    if "thf" in formats:
+        put("threat-model.thf", thf.render(model))
+    if "drawio" in formats:
+        put("threat-model.drawio", drawio.render(model))
+    if "tmt" in formats:
+        put("threat-model.tm7", tmt.render(model))
     if "docx" in formats:
         if docx_report.available():
             path = os.path.join(out_dir, "threat-model.docx")

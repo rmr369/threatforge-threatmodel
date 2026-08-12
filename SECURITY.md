@@ -2,9 +2,13 @@
 
 ## Reporting a vulnerability
 
-Email <security@YOUR-ORG.example> rather than opening a public issue. Include
-reproduction steps and, if possible, a minimal manifest that triggers the
-behaviour. Expect an acknowledgement within three working days.
+Use GitHub's private vulnerability reporting on this repository
+(https://github.com/rmr369/threatforge-threatmodel/security/advisories/new) rather than opening a public issue.
+Enable it under *Settings → Code security → Private vulnerability reporting*
+if it is not already on.
+
+Include reproduction steps and, if possible, a minimal manifest that triggers
+the behaviour. Expect an acknowledgement within three working days.
 
 ## Threat model of the tool itself
 

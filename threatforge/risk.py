@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """
 Risk scoring.
 
@@ -234,7 +238,21 @@ def apply_suppressions(model: ThreatModel, config: Dict[str, Any],
     order = [s.value for s in (Severity.INFO, Severity.LOW, Severity.MEDIUM,
                                Severity.HIGH, Severity.CRITICAL)]
 
+    # Out of scope, declared on the component itself in the DFD editor. Handled
+    # here rather than in each rule so a rule cannot forget it, and suppressed
+    # rather than deleted so the decision -- and its stated reason -- stays
+    # visible in the report instead of the component quietly going quiet.
+    out_of_scope: Dict[str, str] = {}
+    for asset in model.assets.values():
+        if asset.facts.get("attr.out_of_scope") is True:
+            out_of_scope[asset.id] = str(
+                asset.facts.get("attr.out_of_scope_reason") or "no reason recorded")
+
     for f in model.findings:
+        if f.component in out_of_scope:
+            f.suppressed = True
+            f.suppression_reason = f"out of scope: {out_of_scope[f.component]}"
+            continue
         if f.rule_id in rules_off or any(fnmatch.fnmatch(f.rule_id, r) for r in rules_off):
             f.suppressed, f.suppression_reason = True, "rule disabled in configuration"
             continue

@@ -1,0 +1,73 @@
+feat: DFD editor, design-attribute rules, TMT interop, local app
+
+Turns the scanner into a threat-modelling tool: a diagram you can edit, design
+questions whose answers produce findings, and file formats that let a model
+move between this and the tools people already use.
+
+Diagramming surface (threatforge/canvas.py)
+  Shape palette, snap-to-grid, resize handles, marquee and shift selection,
+  copy/paste, align and distribute, undo/redo. Connectors route orthogonally
+  from the side facing the target rather than curving through whatever is in
+  between. Trust boundaries are rectangles you draw and resize, and membership
+  is geometric -- drag a service into the DMZ and it is in the DMZ, with no
+  list to maintain. Dragging the canvas pans; that is the common gesture and it
+  should not have been behind a modifier.
+
+  Geometry lives in layout.json beside the overlay, not inside it, so nudging a
+  shape is not a diff on the threat model and a re-scan no longer discards the
+  arrangement.
+
+Component library (threatforge/library.py)
+  56 component types across Clients, Services, Databases, Messaging,
+  Infrastructure, Security, Networking and External, each with an icon, a DFD
+  element type and defaults. One source of truth in Python, serialised into the
+  page, so the palette, the properties form, the overlay writer and the rule
+  engine cannot drift apart.
+
+Design attributes that drive rules (threatforge/rules/packs/design.yaml)
+  TMT-style properties -- sanitises input, stores credentials, runs as, provides
+  confidentiality, forgery protection -- exposed to the engine as attr.* facts.
+  Ten rules read them and cite the answer as evidence.
+
+  Attributes are three-state. Unanswered is null, never false, so silence
+  produces TF-DSN-000, an info-level coverage gap naming the open questions,
+  rather than an invented threat. A test asserts every attribute advertised as
+  rule-bearing is genuinely read by the rule it names.
+
+  Out of scope is applied once, centrally, in risk.apply_suppressions. Findings
+  are marked suppressed with the recorded reason instead of never being
+  generated, so an exclusion stays reviewable rather than becoming a silence.
+
+.tm7 conformance
+  The previous writer produced files Microsoft TMT refused to open. It had been
+  validated against a reconstruction of the schema rather than a real export,
+  which is not validation. Diffed against a genuine TMT 7.3.51110.1 file and
+  fixed nine structural gaps; the fatal one was the empty <Name/> element that
+  every property attribute carries and ours omitted, since DataContract does not
+  tolerate a missing member mid-sequence. Also absent: KnowledgeBase, Profile,
+  Header, Zoom, StrokeDashArray, StrokeThickness, PortSource, PortTarget and
+  five Threat members.
+
+  tests/fixtures/tmt/tm7-schema.json pins the contract. It records element names
+  only -- no content, no geometry, and none of Microsoft's KnowledgeBase
+  template. A file format is not a work of authorship; see docs/INTEROP.md.
+
+New flow rules
+  TF-FLOW-006 and TF-FLOW-007 fire on plaintext crossing a trust boundary,
+  scoped to a meaningful trust gain on real traffic kinds. Without that scope
+  they matched every Service-to-Pod hop in a cluster, which is how a rule engine
+  becomes noise.
+
+Local application
+  Left navigation grouped Analyse / Model / Record, collapsing to an icon rail;
+  full-height canvas; inspector tabbed between properties and the findings for
+  the selected element. Save and open the whole workspace -- diagram,
+  attributes, layout, triage -- as a single .tfm file. Startup prints which
+  directory the code is being served from, because a stale non-editable install
+  looks exactly like a change that did not work.
+
+Licensing consolidated on MPL-2.0 with DCO sign-off. docs/INTEROP.md records
+what was and was not taken from other projects.
+
+184 tests, including a Node-run behavioural spec for the canvas covering
+routing, containment, undo, ownership and layout persistence.

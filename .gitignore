@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+
+# Tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ThreatForge output -- reports quote configuration and may contain
+# credential names, hostnames and file paths. Keep them out of git.
+threatforge-out/
+*.sarif
+
+# local workflow database: finding history, owners, notes.
+# Personal working state, not something to share.
+.threatforge/
+*.db
+*.db-wal
+*.db-shm
+
+# Office lock files
+~$*
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test-only: jsdom for the page boot spec (tests/js). Never committed.
+node_modules/
+package-lock.json
+package.json

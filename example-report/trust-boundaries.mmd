@@ -1,0 +1,20 @@
+flowchart TD
+
+    classDef crit fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fff;
+    classDef high fill:#7c2d12,stroke:#f97316,stroke-width:2px,color:#fff;
+    classDef med  fill:#713f12,stroke:#eab308,stroke-width:1px,color:#fff;
+    classDef low  fill:#1e3a5f,stroke:#3b82f6,stroke-width:1px,color:#fff;
+    classDef ok   fill:#14532d,stroke:#22c55e,stroke-width:1px,color:#fff;
+    classDef ext  fill:#3f3f46,stroke:#a1a1aa,stroke-width:2px,color:#fff;
+    n0["Internet<br/>trust 0 · 6 assets"]
+    n1["Corporate DMZ<br/>trust 30 · 2 assets"]
+    n2["Corporate DMZ<br/>trust 30 · 3 assets"]
+    n3["Third-party processors<br/>trust 40 · 2 assets"]
+    n4["AWS account<br/>trust 40 · 5 assets"]
+    n5["Kubernetes cluster<br/>trust 60 · 17 assets"]
+    n6["namespace/shop<br/>trust 70 · 14 assets"]
+    n7["Worker node (host OS)<br/>trust 95 · 1 assets"]
+    n0 --> n5
+    n5 --> n6
+    n0 --> n4
+    n5 --> n7

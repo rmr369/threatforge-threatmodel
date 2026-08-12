@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """
 Evidence-based rule engine.
 
@@ -232,6 +236,77 @@ class Subject:
         )
 
     @staticmethod
+    def from_boundary(b, model: ThreatModel) -> "Subject":
+        """A trust boundary as something rules can reason about.
+
+        Boundaries were previously invisible to the engine: only assets and
+        flows were ever presented, so nothing could say "this perimeter is
+        crossed by seventeen unencrypted flows" or "this boundary separates the
+        internet from your credential store and nothing enforces it". The facts
+        below are all counted from the graph, so a boundary rule cites arithmetic
+        rather than an opinion.
+        """
+        members = [model.assets[m] for m in b.members if m in model.assets]
+        inbound, outbound, plain, unauth = [], [], 0, 0
+        inside = set(b.members)
+        for f in model.flows:
+            if f.kind in ("runs", "protects"):
+                continue
+            src_in, tgt_in = f.source in inside, f.target in inside
+            if src_in == tgt_in:
+                continue
+            (inbound if tgt_in else outbound).append(f)
+            if f.encrypted is False:
+                plain += 1
+            if f.authenticated is False:
+                unauth += 1
+
+        data = set()
+        for m in members:
+            data |= {d.value for d in m.data_classes}
+        sensitive = bool(data & {"secret", "credential", "pii", "phi", "pci"})
+        reachable = [m for m in members if m.facts.get("exposure_hops") is not None]
+        # The sharp question is not "does this boundary hold sensitive data
+        # somewhere, and is something in it reachable" -- that is true of every
+        # cluster that has both an ingress and a database, and saying so is
+        # noise. It is whether a *sensitive component itself* is reachable.
+        exposed_sensitive = [
+            m for m in reachable
+            if {d.value for d in m.data_classes} & {"secret", "credential",
+                                                    "pii", "phi", "pci"}]
+
+        facts: Dict[str, Any] = {
+            "boundary.kind": b.kind,
+            "boundary.trust_level": b.trust_level,
+            "boundary.members": len(members),
+            "boundary.empty": not members,
+            "boundary.data_classes": sorted(data),
+            "boundary.sensitive": sensitive,
+            "boundary.inbound_flows": len(inbound),
+            "boundary.outbound_flows": len(outbound),
+            "boundary.crossings": len(inbound) + len(outbound),
+            "boundary.plaintext_crossings": plain,
+            "boundary.unauthenticated_crossings": unauth,
+            "boundary.internet_reachable_members": len(reachable),
+            "boundary.exposed_sensitive_members": len(exposed_sensitive),
+            "boundary.exposed_and_sensitive": bool(exposed_sensitive),
+            # Distance matters. A secret five hops behind a hardened chain is
+            # defence in depth, not exposure -- the intervening components are
+            # the control. Only proximity makes "an outsider can walk to it"
+            # a true statement, so the rule bounds on this rather than on mere
+            # reachability.
+            "boundary.min_sensitive_hops": min(
+                (int(m.facts.get("exposure_hops")) for m in exposed_sensitive),
+                default=None),
+            "boundary.member_kinds": sorted({m.kind for m in members}),
+        }
+        return Subject(
+            id=b.id, kind="TrustBoundary", provider="graph", element="trust_boundary",
+            tags={f"boundary:{b.kind}"}, facts=facts, source=SourceRef(),
+            display=b.name or b.id,
+        )
+
+    @staticmethod
     def from_flow(f: Flow, model: ThreatModel) -> "Subject":
         src = model.assets.get(f.source)
         tgt = model.assets.get(f.target)
@@ -254,7 +329,18 @@ class Subject:
             "flow.target_tags": sorted(tgt.tags) if tgt else [],
             "flow.target_sensitivity": tgt.sensitivity if tgt else 1,
             "flow.from_internet": f.source == "ext:internet",
+            # Computed in controls.py; exposed here so rules can reach it.
+            "flow.plaintext_from_untrusted":
+                bool(f.details.get("plaintext_from_untrusted")),
+            # How much trust the traffic *gains* by being accepted. A flow from a
+            # low-trust zone into a high-trust one is the direction that matters;
+            # the reverse is egress and is a different question.
+            "flow.trust_gain": abs(f.details.get("trust_delta") or 0),
         }
+        # Design attributes answered in the editor. Three-state: a missing key
+        # means unanswered, which no rule may treat as "safe".
+        for key, value in (f.details.get("attributes") or {}).items():
+            facts[f"attr.{key}"] = value
         return Subject(
             id=f.id, kind="DataFlow", provider="graph", element="data_flow",
             tags=set(), facts=facts, source=f.source_ref,
@@ -322,6 +408,7 @@ class RuleEngine:
         findings: List[Finding] = []
         subjects: List[Subject] = [Subject.from_asset(a) for a in model.assets.values()]
         subjects += [Subject.from_flow(f, model) for f in model.flows]
+        subjects += [Subject.from_boundary(b, model) for b in model.boundaries.values()]
 
         for subj in subjects:
             for rule in self.rules:

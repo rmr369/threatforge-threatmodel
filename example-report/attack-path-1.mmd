@@ -1,0 +1,19 @@
+flowchart LR
+
+    classDef crit fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fff;
+    classDef high fill:#7c2d12,stroke:#f97316,stroke-width:2px,color:#fff;
+    classDef med  fill:#713f12,stroke:#eab308,stroke-width:1px,color:#fff;
+    classDef low  fill:#1e3a5f,stroke:#3b82f6,stroke-width:1px,color:#fff;
+    classDef ok   fill:#14532d,stroke:#22c55e,stroke-width:1px,color:#fff;
+    classDef ext  fill:#3f3f46,stroke:#a1a1aa,stroke-width:2px,color:#fff;
+    n0[["0. ExternalEntity Internet"]]
+    n1(["1. Service shop/postgres"])
+    n2[("2. StatefulSet shop/postgres")]
+    n3[("3. Container shop/postgres")]
+    n4[("4. Secret shop/shop-db")]
+    n0 ==>|external-access| n1
+    n1 ==>|routes-to| n2
+    n2 ==>|runs| n3
+    n3 ==>|reads| n4
+    class n0 ext;
+    class n4 crit;

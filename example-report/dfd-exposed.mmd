@@ -1,0 +1,105 @@
+flowchart LR
+
+    classDef crit fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fff;
+    classDef high fill:#7c2d12,stroke:#f97316,stroke-width:2px,color:#fff;
+    classDef med  fill:#713f12,stroke:#eab308,stroke-width:1px,color:#fff;
+    classDef low  fill:#1e3a5f,stroke:#3b82f6,stroke-width:1px,color:#fff;
+    classDef ok   fill:#14532d,stroke:#22c55e,stroke-width:1px,color:#fff;
+    classDef ext  fill:#3f3f46,stroke:#a1a1aa,stroke-width:2px,color:#fff;
+    subgraph n0["Kubernetes cluster (trust 60)"]
+    direction TB
+        n1(["ClusterRole shop-operator"])
+    end
+    subgraph n2["Corporate DMZ (trust 30)"]
+    direction TB
+        n3(["Process Checkout API"])
+        n4(["Process Ledger service"])
+        n5[("DataStore Card Vault")]
+    end
+    subgraph n6["Internet (trust 0)"]
+    direction TB
+        n7[["ExternalEntity Customer Browser"]]
+        n8[["ExternalEntity Customer"]]
+        n9[["ExternalEntity Internet"]]
+    end
+    subgraph n10["Third-party processors (trust 40)"]
+    direction TB
+        n11[["ExternalEntity Stripe (payment provider)"]]
+        n12[("DataStore Salesforce CRM")]
+    end
+    subgraph n13["namespace/shop (trust 70)"]
+    direction TB
+        n14(["Container shop/web"])
+        n15(["Container shop/sidecar-agent"])
+        n16(["Service shop/storefront"])
+        n17(["Ingress shop/storefront-ingress"])
+        n18[("Secret shop/shop-db")]
+        n19[("StatefulSet shop/postgres")]
+        n20[("Container shop/postgres")]
+        n21(["Service shop/postgres"])
+        n22[("PersistentVolumeClaim shop/postgres-pvc")]
+        n23(["ServiceAccount shop/postgres-sa"])
+        n24[("HostPath shop//var/run/docker.sock")]
+        n25(["ServiceAccount shop/default"])
+    end
+    subgraph n26["Worker node (host OS) (trust 95)"]
+    direction TB
+        n27(["Deployment shop/storefront"])
+    end
+    subgraph n28["Corporate DMZ (trust 30)"]
+    direction TB
+        n29(["Process Billing API"])
+        n30[("DataStore Customer Billing Database")]
+    end
+    subgraph n31["Ungrouped"]
+    direction TB
+        n32(["ComposeService api"])
+    end
+    n27 -->|⚠ calls / HTTPS/TLS-1.3| n11
+    n19 -->|⚠ calls / http| n12
+    n7 -->|⚠ calls / https| n29
+    n29 -->|calls / sql| n30
+    n8 -->|⚠ calls / https| n3
+    n3 -->|calls / http| n4
+    n4 -->|calls / sql| n5
+    n27 -->|⚠ runs| n14
+    n27 -->|⚠ runs| n15
+    n19 -->|runs| n20
+    n16 -->|⚠ routes-to / tcp:80| n27
+    n21 -->|routes-to / tcp:5432| n19
+    n17 -->|routes-to / http:80| n16
+    n27 -->|⚠ mounts| n24
+    n19 -->|mounts| n22
+    n20 -->|reads| n18
+    n27 -->|⚠ assumes| n25
+    n19 -->|assumes| n23
+    n23 -->|⚠ granted| n1
+    n9 -->|⚠ external-access / http| n17
+    n9 -->|⚠ external-access / tcp:80| n16
+    n9 -->|⚠ external-access / tcp:5432| n21
+    n9 -->|external-access| n32
+    class n27 crit;
+    class n14 crit;
+    class n15 high;
+    class n16 crit;
+    class n17 crit;
+    class n18 crit;
+    class n19 crit;
+    class n20 crit;
+    class n21 crit;
+    class n22 ok;
+    class n23 ok;
+    class n1 crit;
+    class n32 crit;
+    class n11 ext;
+    class n12 ok;
+    class n7 ext;
+    class n29 ok;
+    class n30 ok;
+    class n8 ext;
+    class n3 ok;
+    class n4 ok;
+    class n5 ok;
+    class n9 ext;
+    class n24 ok;
+    class n25 med;

@@ -1,3 +1,7 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 """
 Ingestor base class, registry, and shared YAML utilities.
 
@@ -131,7 +135,36 @@ def ref(file: str, lines: Dict[str, int], pointer: str = "") -> SourceRef:
 DEFAULT_EXCLUDES = {
     ".git", ".github/workflows", "node_modules", "vendor", ".venv", "venv",
     "__pycache__", ".terraform", "dist", "build", ".idea", ".vscode",
+    # Our own output. The .thf export is a valid input format, so without this
+    # a second scan re-ingests the first scan's report and the numbers change.
+    "threatforge-out",
 }
+
+# Absolute paths the current run must not read, set by the pipeline from the
+# resolved output directory. A module-level set is used because `walk_files` is
+# a free function called from every ingestor; a run is single-threaded.
+_OUTPUT_EXCLUSIONS: set = set()
+
+
+def set_output_exclusions(paths: Iterable[str]) -> None:
+    """Register directories written by this run so they are never read by it.
+
+    Scans must be idempotent. Reports are written inside the scanned repository
+    by default, and several of our output formats are also valid input formats,
+    so without this a repeat scan silently analyses its own previous output.
+    """
+    _OUTPUT_EXCLUSIONS.clear()
+    for p in paths:
+        if p:
+            _OUTPUT_EXCLUSIONS.add(os.path.abspath(p))
+
+
+def _is_excluded_path(dirpath: str) -> bool:
+    if not _OUTPUT_EXCLUSIONS:
+        return False
+    absolute = os.path.abspath(dirpath)
+    return any(absolute == x or absolute.startswith(x + os.sep)
+               for x in _OUTPUT_EXCLUSIONS)
 
 
 def walk_files(root: str, extensions: Iterable[str], excludes: Optional[Iterable[str]] = None,
@@ -142,7 +175,12 @@ def walk_files(root: str, extensions: Iterable[str], excludes: Optional[Iterable
     skip = set(excludes) if excludes is not None else set(DEFAULT_EXCLUDES)
     found: List[str] = []
     for dirpath, dirnames, files in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in skip and not d.startswith(".git")]
+        dirnames[:] = [d for d in dirnames
+                       if d not in skip
+                       and not d.startswith(".git")
+                       and not _is_excluded_path(os.path.join(dirpath, d))]
+        if _is_excluded_path(dirpath):
+            continue
         for fname in files:
             low = fname.lower()
             if low in names or (exts and low.endswith(exts)):

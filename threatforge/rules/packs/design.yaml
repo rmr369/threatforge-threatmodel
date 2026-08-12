@@ -1,0 +1,326 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+pack: design
+description: >
+  Rules that fire on design attributes answered in the DFD editor rather than on
+  anything found in a manifest. These are the questions a reviewer asks in a
+  threat-modelling session -- does it sanitise input, does it store credentials
+  in the clear, is the session cookie protected against forgery -- and static
+  analysis cannot answer any of them.
+
+  Every rule here requires an explicit answer. An unanswered attribute is
+  `null`, never `false`, so silence produces a coverage finding (TF-DSN-000)
+  rather than an invented threat. That distinction is the whole design.
+
+  None of these rules check `out_of_scope`. Scope is applied once, centrally, in
+  `risk.apply_suppressions`, so a rule cannot forget it and an excluded
+  component still shows its findings marked suppressed with the recorded
+  reason -- an exclusion you can see and argue with, rather than a silence.
+
+rules:
+
+  - id: TF-DSN-000
+    title: Design questions unanswered for this component
+    severity: info
+    stride: []
+    confidence: confirmed
+    applies_to: {element: [process, data_store, external_entity]}
+    when:
+      all:
+        - {fact: attr._unanswered, op: len_gt, value: 0}
+    description: >
+      {{ component }} has unanswered design questions: {{ attr._unanswered }}.
+      No threat is claimed here. The point is the opposite -- these are the
+      questions that would let the other rules in this pack decide, and until
+      somebody answers them the analysis of this component is incomplete rather
+      than clean. Open it in the DFD editor and fill in the properties panel.
+    evidence:
+      - {fact: attr._unanswered, text: "unanswered: {{ attr._unanswered }}"}
+    remediation:
+      summary: Answer the properties on this component in the DFD editor.
+      effort: low
+      breaking_risk: low
+    references: {}
+    tags: [coverage, design]
+
+  - id: TF-DSN-001
+    title: Remote input is not sanitised
+    severity: high
+    stride: [T, I, E]
+    confidence: confirmed
+    applies_to: {element: [process]}
+    when:
+      all:
+        - {fact: attr.accepts_input_from, op: eq, value: any_remote}
+        - {fact: attr.sanitizes_input, op: is_false}
+    description: >
+      {{ component }} accepts input from any remote caller and does not sanitise
+      it. That is the precondition for injection of every flavour -- SQL, command,
+      template, LDAP, XPath -- and for stored cross-site scripting when the input
+      is later rendered.
+    evidence:
+      - {fact: attr.sanitizes_input, text: "sanitises input = no, accepts input from any remote caller"}
+    remediation:
+      summary: Validate on a whitelist at the boundary, and use parameterised APIs downstream.
+      guidance: >
+        Sanitising at the point of use beats sanitising at the door, because the
+        correct encoding depends on the sink. Parameterised queries for SQL,
+        context-aware escaping for HTML, argument arrays rather than shell strings.
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-20, CWE-89, CWE-79, CWE-78]
+      mitre: [T1190]
+      nist: [SI-10]
+      owasp: [A03]
+    tags: [input, design]
+
+  - id: TF-DSN-002
+    title: Internet-facing process runs with administrative privilege
+    severity: critical
+    stride: [E]
+    confidence: confirmed
+    applies_to: {element: [process]}
+    when:
+      all:
+        - {fact: attr.running_as, op: in, value: [administrator, root]}
+        - {fact: attr.accepts_input_from, op: eq, value: any_remote}
+    description: >
+      {{ component }} accepts remote input and runs as {{ attr.running_as }}.
+      Any code-execution bug in it is immediately a full host compromise; there
+      is no privilege left to escalate to.
+    evidence:
+      - {fact: attr.running_as, text: "runs as {{ attr.running_as }} while accepting remote input", expected: "an unprivileged service account"}
+    remediation:
+      summary: Run as a dedicated unprivileged account; drop capabilities at start-up.
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-250, CWE-269]
+      mitre: [T1068]
+      nist: [AC-6]
+      owasp: [A01]
+    tags: [privilege, design]
+
+  - id: TF-DSN-003
+    title: Credentials stored without encryption
+    severity: critical
+    stride: [I, S]
+    confidence: confirmed
+    applies_to: {element: [data_store]}
+    when:
+      all:
+        - {fact: attr.stores_credentials, op: is_true}
+        - {fact: attr.encrypted, op: is_false}
+    description: >
+      {{ component }} holds credentials and is not encrypted at rest. Anyone who
+      reaches the storage layer -- a backup, a snapshot, a stolen disk, a
+      misconfigured bucket policy -- reaches the credentials, and credentials are
+      reusable everywhere the account is valid.
+    evidence:
+      - {fact: attr.encrypted, text: "stores credentials = yes, encrypted at rest = no", expected: "encrypted, or moved to a secrets manager"}
+    remediation:
+      summary: Move the secrets to a managed secrets store; never hold reusable credentials at rest.
+      guidance: >
+        Encrypting the store is the floor, not the goal. Short-lived tokens issued
+        on demand remove the asset entirely, and an asset that does not exist
+        cannot be stolen.
+      effort: high
+      breaking_risk: medium
+    references:
+      cwe: [CWE-311, CWE-522]
+      mitre: [T1552]
+      nist: [SC-28, IA-5]
+      owasp: [A02]
+    tags: [secrets, design]
+
+  - id: TF-DSN-006
+    title: Session-bearing flow has no forgery protection
+    severity: high
+    stride: [S, T]
+    confidence: confirmed
+    applies_to: {element: [data_flow]}
+    when:
+      all:
+        - {fact: attr.contains_cookies, op: is_true}
+        - {fact: attr.forgery_protection, op: eq, value: none}
+    description: >
+      {{ component }} carries cookies or session tokens and declares no forgery
+      protection. A browser attaches cookies to requests the user did not intend
+      to make, so any site the victim visits can drive this request with the
+      victim's authority.
+    evidence:
+      - {fact: attr.forgery_protection, text: "carries session state, forgery protection = none", expected: "SameSite, or an anti-forgery token"}
+    remediation:
+      summary: Set SameSite on the cookie and require an anti-forgery token on state-changing requests.
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-352]
+      mitre: [T1185]
+      nist: [SC-23]
+      owasp: [A01]
+    tags: [session, design]
+
+  - id: TF-DSN-007
+    title: Unauthenticated external entity reaches an internal component
+    severity: medium
+    stride: [S]
+    confidence: likely
+    applies_to: {element: [external_entity]}
+    when:
+      all:
+        - {fact: attr.authenticates_itself, op: is_false}
+    description: >
+      {{ component }} does not authenticate itself. Anything downstream that
+      trusts its identity is trusting an assertion nobody verified, so an attacker
+      who can reach the same path can claim to be it.
+    evidence:
+      - {fact: attr.authenticates_itself, text: "authenticates itself = no"}
+    remediation:
+      summary: Require mutual TLS, a signed assertion, or an API key bound to the caller.
+      effort: medium
+      breaking_risk: medium
+    references:
+      cwe: [CWE-287, CWE-290]
+      mitre: [T1078]
+      nist: [IA-2]
+      owasp: [A07]
+    tags: [identity, design]
+
+  - id: TF-DSN-008
+    title: Remote-facing process implements no authentication
+    severity: high
+    stride: [S, E]
+    confidence: confirmed
+    applies_to: {element: [process]}
+    when:
+      all:
+        - {fact: attr.accepts_input_from, op: eq, value: any_remote}
+        - {fact: attr.implements_authn, op: is_false}
+    description: >
+      {{ component }} is reachable by any remote caller and implements no
+      authentication. Whatever it can do, an anonymous caller can do.
+    evidence:
+      - {fact: attr.implements_authn, text: "accepts any remote caller, implements authentication = no"}
+    remediation:
+      summary: Put it behind an authenticating gateway, or implement authentication in the service.
+      effort: medium
+      breaking_risk: high
+    references:
+      cwe: [CWE-306]
+      mitre: [T1190]
+      nist: [AC-3, IA-2]
+      owasp: [A07]
+    tags: [identity, design]
+
+  - id: TF-DSN-009
+    title: Sensitive data store has no backup
+    severity: medium
+    stride: [D]
+    confidence: confirmed
+    applies_to: {element: [data_store]}
+    when:
+      all:
+        - {fact: attr.backup, op: is_false}
+        - {fact: sensitivity, op: gte, value: 4}
+    description: >
+      {{ component }} holds sensitive data and is not backed up. Ransomware and
+      fat-fingered deletions have the same outcome here, and neither is rare.
+    evidence:
+      - {fact: attr.backup, text: "backed up = no on a store holding sensitive data"}
+    remediation:
+      summary: Take backups, keep one copy offline or immutable, and rehearse the restore.
+      guidance: >
+        An untested backup is a hypothesis. The restore is the control; the
+        backup is only its input.
+      effort: medium
+      breaking_risk: low
+    references:
+      cwe: [CWE-1188]
+      mitre: [T1485, T1486]
+      nist: [CP-9, CP-10]
+    tags: [availability, design]
+
+  - id: TF-DSN-010
+    title: Authenticating component does not log security events
+    severity: medium
+    stride: [R]
+    confidence: confirmed
+    applies_to: {element: [process]}
+    when:
+      all:
+        - {fact: attr.implements_authn, op: is_true}
+        - {fact: attr.logs_security_events, op: is_false}
+    description: >
+      {{ component }} authenticates users but records no security events. After
+      an incident there is nothing to say who did what, and a user can plausibly
+      deny an action they took. Repudiation is the least glamorous STRIDE letter
+      and the one that decides whether an investigation is possible at all.
+    evidence:
+      - {fact: attr.logs_security_events, text: "implements authentication = yes, logs security events = no"}
+    remediation:
+      summary: Log authentication outcomes, authorisation failures and privilege changes; ship them off-host.
+      effort: low
+      breaking_risk: low
+    references:
+      cwe: [CWE-778]
+      mitre: [T1070]
+      nist: [AU-2, AU-9]
+      owasp: [A09]
+    tags: [logging, design]
+
+  - id: TF-DSN-011
+    title: Boundary-crossing flow provides no integrity protection
+    severity: medium
+    stride: [T]
+    confidence: confirmed
+    applies_to: {element: [data_flow]}
+    when:
+      all:
+        - {fact: attr.provides_integrity, op: is_false}
+        - {fact: flow.crosses_boundary, op: is_true}
+    description: >
+      {{ component }} crosses a trust boundary without integrity protection.
+      Confidentiality and integrity are separate properties: an observer who
+      cannot read the traffic may still be able to alter it, and a request
+      altered in flight is executed with the sender's authority.
+    evidence:
+      - {fact: attr.provides_integrity, text: "provides integrity = no across {{ flow.boundary_crossed }}"}
+    remediation:
+      summary: Use TLS with a modern cipher suite, or sign the payload.
+      effort: medium
+      breaking_risk: low
+    references:
+      cwe: [CWE-353, CWE-345]
+      mitre: [T1565]
+      nist: [SC-8]
+    tags: [transport, design]
+
+  - id: TF-DSN-012
+    title: Credential store is shared with other systems
+    severity: high
+    stride: [I, E]
+    confidence: confirmed
+    applies_to: {element: [data_store]}
+    when:
+      all:
+        - {fact: attr.stores_credentials, op: is_true}
+        - {fact: attr.shared, op: is_true}
+    description: >
+      {{ component }} holds credentials and is shared with other systems. Its
+      blast radius is every system that can read it, and the weakest of those
+      systems sets the security of all of them.
+    evidence:
+      - {fact: attr.shared, text: "stores credentials = yes, shared = yes"}
+    remediation:
+      summary: Give each consumer its own scoped credential from a secrets manager.
+      effort: high
+      breaking_risk: medium
+    references:
+      cwe: [CWE-522, CWE-668]
+      mitre: [T1552]
+      nist: [IA-5, AC-6]
+    tags: [secrets, design]

@@ -3,10 +3,34 @@
 Two additions carry the most value and neither requires touching the core:
 **new rule packs** and **new ingestors**.
 
+## Licence and sign-off
+
+ThreatForge is [MPL-2.0](LICENSE). Two consequences for contributors:
+
+1. **New source files need the MPL header.** Three comment lines at the top —
+   copy them from any existing file. CI does not enforce this yet; reviewers do.
+2. **Every commit needs a DCO sign-off.** This is a statement that you wrote the
+   code, or have the right to submit it. Read [DCO](DCO) for the exact terms.
+
+```bash
+git commit -s -m "feat: add CloudFormation ingestor"
+```
+
+`-s` appends `Signed-off-by: Your Name <you@example.com>` using your git
+identity. To do it automatically from now on:
+
+```bash
+git config --global format.signOff true
+```
+
+Forgot? `git commit --amend -s --no-edit` fixes the last one, and
+`git rebase --signoff origin/main` fixes a whole branch. The DCO workflow tells
+you which commits are missing it.
+
 ## Setup
 
 ```bash
-git clone https://github.com/YOUR-ORG/threatforge
+git clone https://github.com/rmr369/threatforge-threatmodel
 cd threatforge
 pip install -e ".[all,dev]"
 pytest -q
